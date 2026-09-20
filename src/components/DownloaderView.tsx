@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { UrlBar, Spinner } from "./UrlBar";
 import { OptionsBar } from "./OptionsBar";
 import { QueueList } from "./QueueList";
@@ -56,13 +56,15 @@ export function DownloaderView({
   // defaultOutputDir arrives asynchronously (it comes from /api/setup),
   // usually after this component's initial state is already set up with an
   // empty string. Backfill it once it shows up, but only if the field is
-  // still untouched — never stomp on something the user already typed.
-  useEffect(() => {
+  // still untouched — never stomp on something the user already picked.
+  // Adjusting during render rather than in an effect avoids a second pass.
+  const [seenDefault, setSeenDefault] = useState(defaultOutputDir);
+  if (defaultOutputDir !== seenDefault) {
+    setSeenDefault(defaultOutputDir);
     if (defaultOutputDir && !options.outputDir) {
       setOptions((o) => ({ ...o, outputDir: defaultOutputDir }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultOutputDir]);
+  }
 
   const currentJob = currentJobId ? jobs.get(currentJobId) ?? null : null;
   const itemsByIndex = useMemo(() => {
