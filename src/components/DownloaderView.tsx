@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { UrlBar, Spinner } from "./UrlBar";
 import { OptionsBar } from "./OptionsBar";
 import { QueueList } from "./QueueList";
 import { JobSummaryBar } from "./JobSummaryBar";
-import { fetchInfo } from "@/lib/api";
-import type { DownloadOptions, FolderChoice, JobSnapshot, MediaInfo } from "@/lib/types";
+import { fetchInfo, streamSizes } from "@/lib/api";
+import { sanitizeFolderName } from "@/lib/format";
+import type { DownloadOptions, EntrySize, FolderChoice, JobSnapshot, MediaInfo } from "@/lib/types";
 
 export function DownloaderView({
   defaultOutputDir,
@@ -35,6 +37,14 @@ export function DownloaderView({
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [sizes, setSizes] = useState<Map<number, EntrySize>>(new Map());
+  const [sizing, setSizing] = useState(false);
+  const stopSizing = useRef<(() => void) | null>(null);
+
+  // A probe outlives the component if the user navigates away mid-playlist.
+  useEffect(() => () => stopSizing.current?.(), []);
+
+  const t = useTranslations("Downloader");
 
   const [options, setOptions] = useState<DownloadOptions>({
     url: "",
@@ -43,6 +53,7 @@ export function DownloaderView({
     quality: "1080",
     audioFormat: "mp3",
     isPlaylist: false,
+    playlistTitle: null,
     playlistItems: null,
     embedThumbnail: false,
     embedSubtitles: false,
@@ -74,22 +85,41 @@ export function DownloaderView({
     return map;
   }, [currentJob]);
 
+  function startSizeProbe(probeUrl: string, isPlaylist: boolean) {
+    stopSizing.current?.();
+    setSizing(true);
+    stopSizing.current = streamSizes(
+      probeUrl,
+      isPlaylist,
+      (entry) => setSizes((prev) => new Map(prev).set(entry.index, entry)),
+      () => setSizing(false)
+    );
+  }
+
   async function handleAnalyze() {
     setInfoLoading(true);
     setInfoError(null);
     setInfo(null);
     setCurrentJobId(null);
+    stopSizing.current?.();
+    setSizes(new Map());
     try {
       const result = await fetchInfo(url);
       setInfo(result);
+      startSizeProbe(result.webpageUrl || url, result.type === "playlist");
       if (result.type === "playlist" && result.entries) {
         setSelected(new Set(result.entries.filter((e) => e.isAvailable).map((e) => e.index)));
       } else {
         setSelected(new Set([1]));
       }
-      setOptions((o) => ({ ...o, url: result.webpageUrl || url, isPlaylist: result.type === "playlist" }));
+      setOptions((o) => ({
+        ...o,
+        url: result.webpageUrl || url,
+        isPlaylist: result.type === "playlist",
+        playlistTitle: result.playlistTitle,
+      }));
     } catch (err) {
-      setInfoError(err instanceof Error ? err.message : "Could not read that URL.");
+      setInfoError(err instanceof Error ? err.message : t("errorRead"));
     } finally {
       setInfoLoading(false);
     }
@@ -113,7 +143,7 @@ export function DownloaderView({
       const id = await onStartJob({ ...options, url: options.url || url, isPlaylist: info.type === "playlist", playlistItems }, expectedIds);
       setCurrentJobId(id);
     } catch (err) {
-      setInfoError(err instanceof Error ? err.message : "Could not start the download.");
+      setInfoError(err instanceof Error ? err.message : t("errorStart"));
     } finally {
       setStarting(false);
     }
@@ -126,10 +156,10 @@ export function DownloaderView({
     <div className="flex flex-col gap-5">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-text sm:text-[28px]">
-          Download YouTube videos &amp; playlists
+          {t("title")}
         </h1>
         <p className="mt-1 text-[15px] text-text-muted">
-          Paste a link and grab a single video or a whole playlist — straight to your computer.
+          {t("subtitle")}
         </p>
       </div>
 
@@ -146,6 +176,9 @@ export function DownloaderView({
             onChange={(patch) => setOptions((o) => ({ ...o, ...patch }))}
             folderChoices={folderChoices}
             defaultOutputDir={defaultOutputDir}
+            playlistFolder={
+              info.type === "playlist" ? sanitizeFolderName(info.playlistTitle ?? "") : ""
+            }
           />
 
           <QueueList
@@ -165,6 +198,10 @@ export function DownloaderView({
               setSelected(new Set((info.entries ?? []).filter((e) => e.isAvailable).map((e) => e.index)))
             }
             itemsByIndex={itemsByIndex}
+            sizes={sizes}
+            sizing={sizing}
+            quality={options.quality}
+            kind={options.kind}
           />
 
           {!currentJob && (
@@ -176,14 +213,14 @@ export function DownloaderView({
                     disabled={starting || selected.size === 0}
                     className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-on-accent hover:bg-accent-hover transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {starting && <Spinner />} Download selected ({selected.size})
+                    {starting && <Spinner />} {t("downloadSelected", { count: selected.size })}
                   </button>
                   <button
                     onClick={() => handleDownload("all")}
                     disabled={starting}
                     className="rounded-lg border border-border bg-panel-raised px-4 py-2.5 text-sm font-medium text-text hover:bg-border transition-colors disabled:opacity-50"
                   >
-                    Download entire playlist ({info.entries?.length ?? 0})
+                    {t("downloadAll", { count: info.entries?.length ?? 0 })}
                   </button>
                 </>
               ) : (
@@ -192,7 +229,7 @@ export function DownloaderView({
                   disabled={starting}
                   className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-on-accent hover:bg-accent-hover transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {starting && <Spinner />} Download
+                  {starting && <Spinner />} {t("download")}
                 </button>
               )}
             </div>

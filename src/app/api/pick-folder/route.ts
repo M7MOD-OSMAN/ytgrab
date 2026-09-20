@@ -15,7 +15,7 @@ type PickResult =
   | { kind: "unavailable" }
   | { kind: "error"; message: string };
 
-type Candidate = { cmd: string; args: string[]; env?: NodeJS.ProcessEnv };
+type Candidate = { cmd: string; args: string[]; env?: NodeJS.ProcessEnv; base64Output?: boolean };
 
 // FolderBrowserDialog ignores a SelectedPath that doesn't exist, so open at the
 // closest ancestor that does — the default folder isn't created until first use.
@@ -43,7 +43,9 @@ function candidates(startIn: string): Candidate[] {
       "$top.TopMost = $true",
       "$res = $dlg.ShowDialog($top)",
       "$top.Dispose()",
-      "if ($res -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dlg.SelectedPath) }",
+      // Base64, not the raw path: PowerShell encodes stdout with the console
+      // codepage, which turns any non-Latin folder name into "????".
+      "if ($res -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write([Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($dlg.SelectedPath))) }",
     ].join("\n");
     return [
       {
@@ -52,6 +54,7 @@ function candidates(startIn: string): Candidate[] {
         // environment so it never has to survive script quoting.
         args: ["-NoProfile", "-STA", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")],
         env: { ...process.env, SP_START: startIn },
+        base64Output: true,
       },
     ];
   }
@@ -111,7 +114,8 @@ function runCandidate(candidate: Candidate): Promise<PickResult> {
     });
 
     child.on("close", (code) => {
-      const picked = stdout.trim();
+      const raw = stdout.trim();
+      const picked = candidate.base64Output && raw ? Buffer.from(raw, "base64").toString("utf8") : raw;
       if (picked) return finish({ kind: "picked", path: picked });
       // Every one of these tools exits non-zero with no output when dismissed.
       if (code !== 0) {

@@ -8,21 +8,33 @@ export function formatDuration(seconds: number | null): string {
   return `${m}:${String(sec).padStart(2, "0")}`;
 }
 
-export function statusLabel(status: string): string {
-  switch (status) {
-    case "pending":
-      return "Queued";
-    case "downloading":
-      return "Downloading";
-    case "done":
-      return "Done";
-    case "skipped":
-      return "Already had it";
-    case "error":
-      return "Failed";
-    case "cancelled":
-      return "Cancelled";
-    default:
-      return status;
+// Binary units, matching what yt-dlp and file managers report.
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes / 1024;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
   }
+  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
+}
+
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+
+// Turns a playlist title into a folder name: drops what Windows forbids and
+// trailing dots/spaces (which it silently strips), and caps the length so
+// long filenames inside still fit under MAX_PATH. "" means unusable.
+export function sanitizeFolderName(name: string): string {
+  const cleaned = name
+    .replace(/[<>:"/\|?*\u0000-\u001f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80)
+    .replace(/[. ]+$/, "")
+    .trim();
+  if (!cleaned || WINDOWS_RESERVED.test(cleaned)) return "";
+  return cleaned;
 }

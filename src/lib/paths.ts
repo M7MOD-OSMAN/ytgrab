@@ -2,11 +2,20 @@ import os from "os";
 import path from "path";
 import fs from "fs";
 import type { FolderChoice } from "./types";
+import { sanitizeFolderName } from "./format";
 
-// A sensible default download folder per OS: ~/Downloads/YTGrab, created on
-// first use. The user can always override it in the UI.
+// Plain ~/Downloads. A named subfolder here (the old ~/Downloads/YTGrab) is a
+// trap: if the app itself is unpacked under Downloads, Windows' case-insensitive
+// paths make the two the same folder and downloads land in the source tree.
 export function defaultDownloadDir(): string {
-  return path.join(os.homedir(), "Downloads", "YTGrab");
+  return path.join(os.homedir(), "Downloads");
+}
+
+// Playlists get their own folder named after the playlist, so a 60-item grab
+// doesn't spray files across the destination.
+export function playlistSubdir(baseDir: string, playlistTitle: string | null): string {
+  const folder = playlistTitle ? sanitizeFolderName(playlistTitle) : "";
+  return folder ? path.join(baseDir, folder) : baseDir;
 }
 
 export type PathCheck = {
@@ -15,11 +24,26 @@ export type PathCheck = {
   resolved: string;
 };
 
+// Windows rejects these outright, and mkdir reports it as a bare ENOENT. A
+// name full of "?" is the usual sign a non-Latin path lost its encoding.
+function illegalWindowsChars(resolved: string): string | null {
+  if (process.platform !== "win32") return null;
+  const afterDrive = resolved.replace(/^[a-zA-Z]:[\\/]?/, "");
+  const bad = afterDrive.match(/[<>:"|?*\u0000-\u001f]/g);
+  if (!bad) return null;
+  const shown = [...new Set(bad)].join(" ");
+  return `That folder name contains characters Windows doesn't allow (${shown}).`;
+}
+
 // Validates (and creates, if missing) a directory the user wants to download
 // into. Surfaces the common failure modes with a plain-English reason
 // instead of a raw ENOENT/EACCES stack.
 export function ensureWritableDir(dir: string): PathCheck {
   const resolved = path.resolve(dir);
+  const illegal = illegalWindowsChars(resolved);
+  if (illegal) {
+    return { ok: false, reason: illegal, resolved };
+  }
   try {
     fs.mkdirSync(resolved, { recursive: true });
   } catch (err) {
@@ -29,6 +53,9 @@ export function ensureWritableDir(dir: string): PathCheck {
     }
     if (e.code === "ENOTDIR") {
       return { ok: false, reason: "Part of that path is a file, not a folder.", resolved };
+    }
+    if (e.code === "ENOENT") {
+      return { ok: false, reason: "That folder path isn't valid on this system.", resolved };
     }
     return { ok: false, reason: e.message || "Could not create that folder.", resolved };
   }
@@ -57,8 +84,7 @@ export function commonDownloadDirs(): FolderChoice[] {
   const home = os.homedir();
   const videos = process.platform === "darwin" ? "Movies" : "Videos";
   const candidates: FolderChoice[] = [
-    { label: "Downloads/YTGrab", path: defaultDownloadDir() },
-    { label: "Downloads", path: path.join(home, "Downloads") },
+    { label: "Downloads", path: defaultDownloadDir() },
     { label: videos, path: path.join(home, videos) },
     { label: "Music", path: path.join(home, "Music") },
     { label: "Desktop", path: path.join(home, "Desktop") },
@@ -67,6 +93,8 @@ export function commonDownloadDirs(): FolderChoice[] {
   return candidates.filter((c, i) => {
     if (seen.has(c.path)) return false;
     seen.add(c.path);
-    return i === 0 || fs.existsSync(c.path);
+    // Resolved from os.homedir() at runtime, so there is nothing for
+    // Turbopack to trace — without this it bundles the whole project.
+    return i === 0 || fs.existsSync(/*turbopackIgnore: true*/ c.path);
   });
 }

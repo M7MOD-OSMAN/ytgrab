@@ -202,7 +202,7 @@ export function Select({
           aria-label={label}
           aria-activedescendant={activeIndex >= 0 ? `${id}-option-${activeIndex}` : undefined}
           tabIndex={-1}
-          className={`absolute left-0 z-50 max-h-72 min-w-full overflow-y-auto overflow-x-hidden rounded-xl border border-border-strong bg-panel/95 p-1.5 shadow-[var(--shadow-2)] backdrop-blur-xl ${
+          className={`absolute start-0 z-50 max-h-72 min-w-full overflow-y-auto overflow-x-hidden rounded-xl border border-border-strong bg-panel/95 p-1.5 shadow-[var(--shadow-2)] backdrop-blur-xl ${
             dropUp ? "bottom-full mb-2 origin-bottom animate-select-up" : "top-full mt-2 origin-top animate-select-down"
           }`}
         >

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { TopNav, type Tab } from "@/components/TopNav";
 import { SetupBanner } from "@/components/SetupBanner";
 import { DownloaderView } from "@/components/DownloaderView";
@@ -18,6 +19,7 @@ import {
 import type { DownloadOptions, JobSnapshot } from "@/lib/types";
 
 export default function Home() {
+  const t = useTranslations("Footer");
   const [setup, setSetup] = useState<SetupStatus | null>(null);
   const [tab, setTab] = useState<Tab>("downloader");
   const [jobs, setJobs] = useState<Map<string, JobSnapshot>>(new Map());
@@ -91,7 +93,7 @@ export default function Home() {
   const jobList = Array.from(jobs.values());
 
   return (
-    <div className="min-h-screen bg-bg">
+    <div className="flex min-h-screen flex-col bg-bg">
       <TopNav
         tab={tab}
         onTabChange={setTab}
@@ -100,7 +102,7 @@ export default function Home() {
         ytDlpVersion={setup?.ytDlp.version ?? null}
       />
 
-      <main className="mx-auto max-w-[1100px] px-4 py-6 lg:px-8 lg:py-10">
+      <main className="mx-auto w-full max-w-[1100px] flex-1 px-4 py-6 lg:px-8 lg:py-10">
         {setup && !setup.ready && <div className="mb-5">
           <SetupBanner status={setup} onRefresh={refreshSetup} />
         </div>}
@@ -122,8 +124,12 @@ export default function Home() {
 
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-between gap-2 px-4 py-4 text-xs text-text-faint lg:px-8">
-          <span>StreamPull — runs locally on this machine, for personal use only.</span>
-          {setup?.ffmpeg.version && <span className="font-mono">{setup.ffmpeg.version.split(" Copyright")[0]}</span>}
+          <span>{t("tagline")}</span>
+          {setup?.ffmpeg.version && (
+            <span className="font-mono" dir="ltr">
+              {setup.ffmpeg.version.split(" Copyright")[0]}
+            </span>
+          )}
         </div>
       </footer>
     </div>

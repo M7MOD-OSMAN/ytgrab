@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import type { SetupStatus } from "@/lib/api";
 
-function installCommands(platform: string): { label: string; commands: string[] }[] {
+type T = ReturnType<typeof useTranslations<"Setup">>;
+
+function installCommands(platform: string, t: T): { label: string; commands: string[] }[] {
   if (platform === "win32") {
     return [
       {
-        label: "PowerShell or Windows Terminal",
+        label: t("winTerminal"),
         commands: ["winget install yt-dlp.yt-dlp", "winget install Gyan.FFmpeg"],
       },
     ];
@@ -15,7 +18,7 @@ function installCommands(platform: string): { label: string; commands: string[] 
   if (platform === "darwin") {
     return [
       {
-        label: "Terminal (with Homebrew)",
+        label: t("macTerminal"),
         commands: ["brew install yt-dlp ffmpeg"],
       },
     ];
@@ -37,9 +40,10 @@ function installCommands(platform: string): { label: string; commands: string[] 
 }
 
 function CopyableCommand({ command }: { command: string }) {
+  const t = useTranslations("Setup");
   const [copied, setCopied] = useState(false);
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg bg-bg/60 border border-border px-3 py-2">
+    <div className="flex items-center justify-between gap-3 rounded-lg bg-bg/60 border border-border px-3 py-2" dir="ltr">
       <code className="text-[13px] font-mono text-text overflow-x-auto whitespace-pre">{command}</code>
       <button
         onClick={async () => {
@@ -49,7 +53,7 @@ function CopyableCommand({ command }: { command: string }) {
         }}
         className="shrink-0 rounded-md px-2 py-0.5 text-xs font-mono text-text-muted hover:bg-panel-raised hover:text-text transition-colors"
       >
-        {copied ? "copied" : "copy"}
+        {copied ? t("copied") : t("copy")}
       </button>
     </div>
   );
@@ -62,11 +66,12 @@ export function SetupBanner({
   status: SetupStatus;
   onRefresh: () => void;
 }) {
-  const groups = installCommands(status.platform);
+  const t = useTranslations("Setup");
+  const groups = installCommands(status.platform, t);
   const missing = [
     !status.ytDlp.found ? "yt-dlp" : null,
     !status.ffmpeg.found ? "ffmpeg" : null,
-  ].filter(Boolean);
+  ].filter(Boolean) as string[];
 
   return (
     <div className="rounded-xl border border-warning-border bg-warning-soft p-5">
@@ -74,12 +79,9 @@ export function SetupBanner({
         <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-warning" />
         <div className="flex-1 min-w-0">
           <h2 className="text-[15px] font-medium text-text">
-            {missing.join(" and ")} {missing.length > 1 ? "aren't" : "isn't"} installed yet
+            {t("missing", { count: missing.length, names: missing.join(t("and")) })}
           </h2>
-          <p className="mt-1 text-sm text-text-muted">
-            StreamPull drives yt-dlp and ffmpeg on this machine — it can&apos;t download anything
-            until both are on your PATH. Run the command below, then restart this app.
-          </p>
+          <p className="mt-1 text-sm text-text-muted">{t("body")}</p>
 
           <div className="mt-4 space-y-4">
             {groups.map((g) => (
@@ -99,7 +101,7 @@ export function SetupBanner({
               onClick={onRefresh}
               className="text-sm font-medium text-accent hover:text-accent-hover transition-colors"
             >
-              I&apos;ve installed it — check again
+              {t("recheck")}
             </button>
           </div>
         </div>

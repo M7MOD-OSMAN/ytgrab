@@ -1,0 +1,145 @@
+{
+  "Lang": {
+    "switch": "Language"
+  },
+  "Nav": {
+    "downloader": "Downloader",
+    "history": "History",
+    "ready": "Ready",
+    "setupNeeded": "Setup needed"
+  },
+  "Footer": {
+    "tagline": "StreamPull — runs locally on this machine, for personal use only."
+  },
+  "Downloader": {
+    "title": "Download YouTube videos & playlists",
+    "subtitle": "Paste a link and grab a single video or a whole playlist — straight to your computer.",
+    "errorRead": "Could not read that URL.",
+    "errorStart": "Could not start the download.",
+    "download": "Download",
+    "downloadSelected": "Download selected ({count})",
+    "downloadAll": "Download entire playlist ({count})"
+  },
+  "Url": {
+    "placeholder": "Paste a YouTube video or playlist link…",
+    "paste": "Paste",
+    "analyze": "Analyze link",
+    "analyzing": "Analyzing…",
+    "capSingle": "Single videos",
+    "capPlaylists": "Playlists & mixes",
+    "capAudio": "Audio extraction",
+    "cap4k": "Up to 4K"
+  },
+  "Options": {
+    "video": "Video (MP4)",
+    "audio": "Audio",
+    "quality": "Quality",
+    "format": "Format",
+    "qualityBest": "Best available",
+    "hintAuto": "auto",
+    "hintSmaller": "smaller",
+    "hintSmallest": "smallest",
+    "hintCompatible": "most compatible",
+    "hintBetter": "better quality",
+    "subtitles": "Subtitles",
+    "embedMetadata": "Embed metadata",
+    "embedThumbnail": "Embed thumbnail",
+    "advanced": "Advanced",
+    "saveTo": "Save to",
+    "customFolder": "Custom folder…",
+    "defaultBadge": "Default",
+    "chooseFolder": "Choose a folder…",
+    "typePath": "Type a full folder path",
+    "browse": "Browse…",
+    "choosing": "Choosing…",
+    "open": "Open",
+    "pickerOpen": "A folder chooser is open on your desktop — check behind this window if you don’t see it.",
+    "errorOpenFolder": "Could not open that folder.",
+    "errorPicker": "Could not open a folder picker.",
+    "rateLimit": "Rate limit",
+    "rateLimitHint": "(KB/s, blank = unlimited)",
+    "unlimited": "Unlimited",
+    "subtitleLangs": "Subtitle languages",
+    "signInContent": "Sign-in required content",
+    "signInHint": "(private / members-only / age-restricted)",
+    "noCookies": "No cookies",
+    "cookieSource": "Cookie source",
+    "useCookies": "Use {browser} cookies",
+    "uploadCookies": "Upload cookies.txt",
+    "uploading": "Uploading…",
+    "playlistFolder": "Playlist files go into a “{folder}” subfolder."
+  },
+  "Queue": {
+    "playlist": "Playlist",
+    "videos": "{count, plural, one {# video} other {# videos}}",
+    "unavailable": "{count} unavailable",
+    "selected": "{count} selected",
+    "all": "All",
+    "availableOnly": "Available only",
+    "none": "None",
+    "live": "LIVE",
+    "liveNote": "This is a live stream — the download runs until the stream ends.",
+    "playlistOnlyNote": "This link also points at a playlist — only this single video will be downloaded.",
+    "willSkip": "{reason} — will be skipped",
+    "totalSize": "{size} total",
+    "sizing": "calculating sizes…"
+  },
+  "Status": {
+    "pending": "Queued",
+    "downloading": "Downloading",
+    "done": "Done",
+    "skipped": "Already had it",
+    "error": "Failed",
+    "cancelled": "Cancelled"
+  },
+  "Job": {
+    "downloading": "Downloading — {done} of {total}",
+    "done": "Done — {done} of {total}",
+    "cancelled": "Cancelled",
+    "failed": "Failed",
+    "failedCount": "{count} failed",
+    "cancel": "Cancel",
+    "openFolder": "Open folder",
+    "removePartial": "Remove partial files",
+    "savingTo": "Saving to"
+  },
+  "History": {
+    "title": "Download history",
+    "subtitle": "Downloads started from this app this session.",
+    "search": "Search history by title or URL…",
+    "filterAll": "All",
+    "filterCompleted": "Completed",
+    "filterPlaylists": "Playlists",
+    "filterAudio": "Audio",
+    "filterFailed": "Failed / cancelled",
+    "empty": "Nothing downloaded yet this session.",
+    "noMatch": "No downloads match that filter.",
+    "cleanUp": "Clean up",
+    "playlistSuffix": " · playlist",
+    "items": "{done}/{total} {total, plural, one {item} other {items}}",
+    "videoCount": "{count, plural, one {# video} other {# videos}}"
+  },
+  "JobStatus": {
+    "completed": "Completed",
+    "error": "Failed",
+    "cancelled": "Cancelled",
+    "running": "Downloading",
+    "queued": "Queued"
+  },
+  "Time": {
+    "justNow": "just now",
+    "minutes": "{count}m ago",
+    "hours": "{count}h ago",
+    "days": "{count}d ago"
+  },
+  "Setup": {
+    "missing": "{count, plural, one {{names} isn’t installed yet} other {{names} aren’t installed yet}}",
+    "body": "StreamPull drives yt-dlp and ffmpeg on this machine — it can’t download anything until both are on your PATH. Run the command below, then restart this app.",
+    "recheck": "I’ve installed it — check again",
+    "copy": "copy",
+    "copied": "copied",
+    "winTerminal": "PowerShell or Windows Terminal",
+    "macTerminal": "Terminal (with Homebrew)",
+    "and": " and "
+  }
+}

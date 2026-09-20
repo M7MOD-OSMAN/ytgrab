@@ -1,0 +1,145 @@
+{
+  "Lang": {
+    "switch": "اللغة"
+  },
+  "Nav": {
+    "downloader": "التنزيل",
+    "history": "السجل",
+    "ready": "جاهز",
+    "setupNeeded": "يحتاج إعدادًا"
+  },
+  "Footer": {
+    "tagline": "StreamPull — يعمل محليًا على هذا الجهاز، للاستخدام الشخصي فقط."
+  },
+  "Downloader": {
+    "title": "نزّل فيديوهات وقوائم تشغيل يوتيوب",
+    "subtitle": "الصق رابطًا ونزّل فيديو واحدًا أو قائمة تشغيل كاملة — مباشرةً إلى جهازك.",
+    "errorRead": "تعذّرت قراءة هذا الرابط.",
+    "errorStart": "تعذّر بدء التنزيل.",
+    "download": "تنزيل",
+    "downloadSelected": "تنزيل المحدَّد ({count})",
+    "downloadAll": "تنزيل القائمة كاملةً ({count})"
+  },
+  "Url": {
+    "placeholder": "الصق رابط فيديو أو قائمة تشغيل من يوتيوب…",
+    "paste": "لصق",
+    "analyze": "تحليل الرابط",
+    "analyzing": "جارٍ التحليل…",
+    "capSingle": "فيديوهات مفردة",
+    "capPlaylists": "قوائم التشغيل والمِكسات",
+    "capAudio": "استخراج الصوت",
+    "cap4k": "حتى دقة 4K"
+  },
+  "Options": {
+    "video": "فيديو (MP4)",
+    "audio": "صوت",
+    "quality": "الجودة",
+    "format": "الصيغة",
+    "qualityBest": "أفضل جودة متاحة",
+    "hintAuto": "تلقائي",
+    "hintSmaller": "حجم أصغر",
+    "hintSmallest": "الأصغر حجمًا",
+    "hintCompatible": "الأكثر توافقًا",
+    "hintBetter": "جودة أعلى",
+    "subtitles": "الترجمات",
+    "embedMetadata": "تضمين البيانات الوصفية",
+    "embedThumbnail": "تضمين الصورة المصغّرة",
+    "advanced": "خيارات متقدمة",
+    "saveTo": "الحفظ في",
+    "customFolder": "مجلد مخصّص…",
+    "defaultBadge": "افتراضي",
+    "chooseFolder": "اختر مجلدًا…",
+    "typePath": "اكتب مسار المجلد كاملًا",
+    "browse": "استعراض…",
+    "choosing": "جارٍ الاختيار…",
+    "open": "فتح",
+    "pickerOpen": "نافذة اختيار المجلد مفتوحة على سطح المكتب — ابحث خلف هذه النافذة إن لم ترَها.",
+    "errorOpenFolder": "تعذّر فتح هذا المجلد.",
+    "errorPicker": "تعذّر فتح نافذة اختيار المجلد.",
+    "rateLimit": "حدّ السرعة",
+    "rateLimitHint": "(كيلوبايت/ث، اتركه فارغًا لبلا حدود)",
+    "unlimited": "بلا حدود",
+    "subtitleLangs": "لغات الترجمة",
+    "signInContent": "محتوى يتطلّب تسجيل الدخول",
+    "signInHint": "(خاص / للأعضاء فقط / مقيَّد بالعمر)",
+    "noCookies": "بدون كوكيز",
+    "cookieSource": "مصدر الكوكيز",
+    "useCookies": "استخدام كوكيز {browser}",
+    "uploadCookies": "رفع ملف cookies.txt",
+    "uploading": "جارٍ الرفع…",
+    "playlistFolder": "ستُحفظ ملفات القائمة في مجلد فرعي باسم ”{folder}“."
+  },
+  "Queue": {
+    "playlist": "قائمة تشغيل",
+    "videos": "{count, plural, zero {# فيديو} one {فيديو واحد} two {فيديوهان} few {# فيديوهات} many {# فيديو} other {# فيديو}}",
+    "unavailable": "{count} غير متاح",
+    "selected": "{count} محدَّد",
+    "all": "الكل",
+    "availableOnly": "المتاح فقط",
+    "none": "لا شيء",
+    "live": "بث مباشر",
+    "liveNote": "هذا بثّ مباشر — سيستمر التنزيل حتى انتهاء البث.",
+    "playlistOnlyNote": "يشير هذا الرابط إلى قائمة تشغيل أيضًا — سيُنزَّل هذا الفيديو وحده.",
+    "willSkip": "{reason} — سيتم تخطّيه",
+    "totalSize": "{size} الإجمالي",
+    "sizing": "جارٍ حساب الأحجام…"
+  },
+  "Status": {
+    "pending": "في الانتظار",
+    "downloading": "جارٍ التنزيل",
+    "done": "تم",
+    "skipped": "موجود مسبقًا",
+    "error": "فشل",
+    "cancelled": "أُلغي"
+  },
+  "Job": {
+    "downloading": "جارٍ التنزيل — {done} من {total}",
+    "done": "اكتمل — {done} من {total}",
+    "cancelled": "أُلغي",
+    "failed": "فشل",
+    "failedCount": "فشل {count}",
+    "cancel": "إلغاء",
+    "openFolder": "فتح المجلد",
+    "removePartial": "حذف الملفات الناقصة",
+    "savingTo": "الحفظ في"
+  },
+  "History": {
+    "title": "سجل التنزيلات",
+    "subtitle": "التنزيلات التي بدأت من هذا التطبيق في هذه الجلسة.",
+    "search": "ابحث في السجل بالعنوان أو الرابط…",
+    "filterAll": "الكل",
+    "filterCompleted": "مكتمل",
+    "filterPlaylists": "قوائم التشغيل",
+    "filterAudio": "صوت",
+    "filterFailed": "فشل / أُلغي",
+    "empty": "لم يُنزَّل أي شيء في هذه الجلسة بعد.",
+    "noMatch": "لا توجد تنزيلات تطابق هذا المرشّح.",
+    "cleanUp": "تنظيف",
+    "playlistSuffix": " · قائمة تشغيل",
+    "items": "{done}/{total} {total, plural, zero {عنصر} one {عنصر} two {عنصران} few {عناصر} many {عنصرًا} other {عنصر}}",
+    "videoCount": "{count, plural, zero {# فيديو} one {فيديو واحد} two {فيديوهان} few {# فيديوهات} many {# فيديو} other {# فيديو}}"
+  },
+  "JobStatus": {
+    "completed": "مكتمل",
+    "error": "فشل",
+    "cancelled": "أُلغي",
+    "running": "جارٍ التنزيل",
+    "queued": "في الانتظار"
+  },
+  "Time": {
+    "justNow": "الآن",
+    "minutes": "قبل {count} د",
+    "hours": "قبل {count} س",
+    "days": "قبل {count} ي"
+  },
+  "Setup": {
+    "missing": "{count, plural, zero {{names} غير مثبَّت بعد} one {{names} غير مثبَّت بعد} two {{names} غير مثبَّتين بعد} few {{names} غير مثبَّتة بعد} many {{names} غير مثبَّتة بعد} other {{names} غير مثبَّت بعد}}",
+    "body": "يعتمد StreamPull على yt-dlp وffmpeg على هذا الجهاز — لا يمكنه تنزيل أي شيء حتى يتوفّرا في مسار PATH. نفّذ الأمر أدناه ثم أعد تشغيل التطبيق.",
+    "recheck": "ثبّتُّه — أعد الفحص",
+    "copy": "نسخ",
+    "copied": "تم النسخ",
+    "winTerminal": "PowerShell أو Windows Terminal",
+    "macTerminal": "الطرفية (مع Homebrew)",
+    "and": " و"
+  }
+}

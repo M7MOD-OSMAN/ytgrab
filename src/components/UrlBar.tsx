@@ -1,6 +1,8 @@
 "use client";
 
-const CAPABILITIES = ["Single videos", "Playlists & mixes", "Audio extraction", "Up to 4K"];
+import { useTranslations } from "next-intl";
+
+const CAPABILITIES = ["capSingle", "capPlaylists", "capAudio", "cap4k"] as const;
 
 export function UrlBar({
   url,
@@ -15,6 +17,8 @@ export function UrlBar({
   loading: boolean;
   disabled: boolean;
 }) {
+  const t = useTranslations("Url");
+
   return (
     <div className="rounded-xl border border-border bg-panel p-4">
       <div className="flex flex-col gap-2 sm:flex-row">
@@ -23,13 +27,16 @@ export function UrlBar({
             <path d="M10 8.5v7l6-3.5-6-3.5Z" fill="currentColor" />
             <rect x="2.5" y="5" width="19" height="14" rx="4" stroke="currentColor" strokeWidth="1.5" />
           </svg>
+          {/* dir=auto, not ltr: a typed URL still reads LTR, but while the
+              field is empty the placeholder must follow the page direction. */}
           <input
             value={url}
             onChange={(e) => onUrlChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !disabled) onAnalyze();
             }}
-            placeholder="Paste a YouTube video or playlist link…"
+            placeholder={t("placeholder")}
+            dir="auto"
             className="w-full min-w-0 bg-transparent text-[15px] text-text placeholder:text-text-faint focus:outline-none font-mono"
             spellCheck={false}
           />
@@ -44,7 +51,7 @@ export function UrlBar({
             }}
             className="shrink-0 rounded-md border border-border bg-panel-raised px-2.5 py-1 text-xs text-text-muted hover:text-text transition-colors"
           >
-            Paste
+            {t("paste")}
           </button>
         </div>
         <button
@@ -54,12 +61,12 @@ export function UrlBar({
         >
           {loading ? (
             <>
-              <Spinner /> Analyzing…
+              <Spinner /> {t("analyzing")}
             </>
           ) : (
             <>
-              Analyze link
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              {t("analyze")}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="rtl:-scale-x-100">
                 <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </>
@@ -70,7 +77,7 @@ export function UrlBar({
         {CAPABILITIES.map((c) => (
           <span key={c} className="flex items-center gap-1.5 text-xs text-text-muted">
             <span className="h-1.5 w-1.5 rounded-full bg-success" />
-            {c}
+            {t(c)}
           </span>
         ))}
       </div>

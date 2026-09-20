@@ -6,7 +6,7 @@ import fs from "fs";
 import { requireBinaries } from "./binaries";
 import { buildDownloadArgs, PROGRESS_MARKER } from "./ytdlp";
 import type { DownloadOptions, JobItemProgress, JobSnapshot, JobStatus } from "./types";
-import { ensureWritableDir } from "./paths";
+import { ensureWritableDir, playlistSubdir } from "./paths";
 
 type Job = {
   id: string;
@@ -200,7 +200,10 @@ export function handleLine(job: Job, raw: string, isStderr: boolean) {
 }
 
 export function createJob(options: DownloadOptions, expectedIds: { id: string; title: string; index: number }[] | null): JobSnapshot {
-  const dirCheck = ensureWritableDir(options.outputDir);
+  const targetDir = options.isPlaylist
+    ? playlistSubdir(options.outputDir, options.playlistTitle)
+    : options.outputDir;
+  const dirCheck = ensureWritableDir(targetDir);
   if (!dirCheck.ok) {
     throw new Error(dirCheck.reason || "Could not use that download folder.");
   }

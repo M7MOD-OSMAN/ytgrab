@@ -9,6 +9,8 @@ export type DownloadOptions = {
   quality: QualityChoice; // ignored when kind === "audio"
   audioFormat: "mp3" | "m4a" | "opus";
   isPlaylist: boolean;
+  // Names the per-playlist subfolder created under outputDir.
+  playlistTitle: string | null;
   // 1-based indices into the playlist entries the user selected, or null
   // for "all items".
   playlistItems: number[] | null;
@@ -87,3 +89,12 @@ export type JobSnapshot = {
 
 // A destination offered in the "Save to" dropdown.
 export type FolderChoice = { label: string; path: string };
+
+// Download size for one playlist entry, resolved per quality choice so the UI
+// can react to the quality dropdown without re-probing the network.
+export type EntrySize = {
+  index: number;
+  id: string;
+  video: Partial<Record<QualityChoice, number>>;
+  audio: number | null;
+};

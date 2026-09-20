@@ -1,7 +1,30 @@
 "use client";
 
-import type { JobItemProgress, MediaInfo } from "@/lib/types";
-import { formatDuration, statusLabel } from "@/lib/format";
+import { useTranslations } from "next-intl";
+import type { EntrySize, JobItemProgress, MediaKind, MediaInfo, QualityChoice } from "@/lib/types";
+import { formatBytes, formatDuration } from "@/lib/format";
+
+// The download merges a video stream with an audio one, so the figure that
+// matters depends on both the media kind and the chosen quality.
+function sizeFor(entry: EntrySize | undefined, kind: MediaKind, quality: QualityChoice): number | null {
+  if (!entry) return null;
+  return (kind === "audio" ? entry.audio : entry.video[quality]) ?? null;
+}
+
+function SizeCell({ bytes, pending }: { bytes: number | null; pending: boolean }) {
+  if (bytes == null) {
+    return (
+      <span className="shrink-0 text-xs font-mono text-text-faint/50" dir="ltr">
+        {pending ? "⋯" : "—"}
+      </span>
+    );
+  }
+  return (
+    <span className="shrink-0 text-xs font-mono text-text-muted" dir="ltr">
+      {formatBytes(bytes)}
+    </span>
+  );
+}
 
 function Thumb({ src }: { src: string | null }) {
   return (
@@ -31,9 +54,10 @@ function ItemProgressBar({ item }: { item: JobItemProgress }) {
 }
 
 function StatusPill({ item }: { item: JobItemProgress }) {
+  const t = useTranslations("Status");
   if (item.status === "downloading") {
     return (
-      <div className="shrink-0 text-right text-xs">
+      <div className="shrink-0 text-end text-xs" dir="ltr">
         <div className="font-mono text-accent">{item.percent.toFixed(0)}%</div>
         {item.speed && <div className="font-mono text-text-faint">{item.speed}</div>}
       </div>
@@ -48,7 +72,7 @@ function StatusPill({ item }: { item: JobItemProgress }) {
   };
   return (
     <span className={`shrink-0 rounded-md border px-2 py-0.5 text-xs font-medium ${map[item.status] ?? map.pending}`}>
-      {statusLabel(item.status)}
+      {t(item.status)}
     </span>
   );
 }
@@ -61,6 +85,10 @@ export function QueueList({
   onSelectNone,
   onSelectAvailable,
   itemsByIndex,
+  sizes,
+  sizing,
+  quality,
+  kind,
 }: {
   info: MediaInfo;
   selected: Set<number>;
@@ -70,9 +98,23 @@ export function QueueList({
   onSelectAvailable: () => void;
   /** When a job is active/finished for this preview, live per-item progress keyed by playlist index. */
   itemsByIndex: Map<number, JobItemProgress> | null;
+  /** Download sizes keyed by playlist index; fills in progressively. */
+  sizes: Map<number, EntrySize>;
+  sizing: boolean;
+  quality: QualityChoice;
+  kind: MediaKind;
 }) {
+  const t = useTranslations("Queue");
   const entries = info.entries ?? [];
   const unavailableCount = entries.filter((e) => !e.isAvailable).length;
+
+  // Only the selected rows count toward the total, matching what the primary
+  // download button would actually fetch.
+  let totalBytes: number | null = null;
+  for (const index of selected) {
+    const bytes = sizeFor(sizes.get(index), kind, quality);
+    if (bytes != null) totalBytes = (totalBytes ?? 0) + bytes;
+  }
 
   if (info.type === "video") {
     const progress = itemsByIndex?.get(1) ?? null;
@@ -84,17 +126,21 @@ export function QueueList({
             <div className="line-clamp-2 text-[15px] font-medium leading-snug text-text">{info.title}</div>
             <div className="mt-1 text-sm text-text-muted">
               {info.uploader && <span>{info.uploader} · </span>}
-              <span className="font-mono">{info.isLive ? "LIVE" : formatDuration(info.durationSeconds)}</span>
+              <span className="font-mono" dir="ltr">
+                {info.isLive ? t("live") : formatDuration(info.durationSeconds)}
+              </span>
+              {!info.isLive && (
+                <>
+                  {" · "}
+                  <SizeCell bytes={sizeFor(sizes.get(1), kind, quality)} pending={sizing} />
+                </>
+              )}
             </div>
             {info.isLive && (
-              <div className="mt-2 text-xs text-warning">
-                This is a live stream — the download runs until the stream ends.
-              </div>
+              <div className="mt-2 text-xs text-warning">{t("liveNote")}</div>
             )}
             {info.partOfPlaylistOnly && (
-              <div className="mt-2 text-xs text-text-faint">
-                This link also points at a playlist — only this single video will be downloaded.
-              </div>
+              <div className="mt-2 text-xs text-text-faint">{t("playlistOnlyNote")}</div>
             )}
             {progress && (
               <div className="mt-2">
@@ -117,25 +163,36 @@ export function QueueList({
       <div className="flex items-center justify-between gap-3 border-b border-border p-4">
         <div className="min-w-0">
           <div className="line-clamp-1 text-[15px] font-medium leading-snug text-text">
-            {info.playlistTitle || "Playlist"}
+            {info.playlistTitle || t("playlist")}
           </div>
           <div className="mt-0.5 text-sm text-text-muted">
-            {entries.length} video{entries.length === 1 ? "" : "s"}
-            {unavailableCount > 0 && <span className="text-warning"> · {unavailableCount} unavailable</span>}
+            {t("videos", { count: entries.length })}
+            {unavailableCount > 0 && (
+              <span className="text-warning"> · {t("unavailable", { count: unavailableCount })}</span>
+            )}
             {" · "}
-            <span className="font-mono text-accent">{selected.size} selected</span>
+            <span className="text-accent">{t("selected", { count: selected.size })}</span>
+            {totalBytes != null && (
+              <>
+                {" · "}
+                <span className="font-mono text-text" dir="ltr">
+                  {t("totalSize", { size: formatBytes(totalBytes) })}
+                </span>
+              </>
+            )}
+            {sizing && totalBytes == null && <span className="text-text-faint"> · {t("sizing")}</span>}
           </div>
         </div>
         {!itemsByIndex && (
           <div className="flex shrink-0 items-center gap-3 text-xs">
             <button onClick={onSelectAll} className="text-text-muted hover:text-text transition-colors">
-              All
+              {t("all")}
             </button>
             <button onClick={onSelectAvailable} className="text-text-muted hover:text-text transition-colors">
-              Available only
+              {t("availableOnly")}
             </button>
             <button onClick={onSelectNone} className="text-text-muted hover:text-text transition-colors">
-              None
+              {t("none")}
             </button>
           </div>
         )}
@@ -154,22 +211,27 @@ export function QueueList({
                   className="h-4 w-4 shrink-0 rounded border-border-strong accent-accent"
                 />
               )}
-              <span className="w-6 shrink-0 text-right text-xs font-mono text-text-faint">{e.index}</span>
+              <span className="w-6 shrink-0 text-end text-xs font-mono text-text-faint">{e.index}</span>
               <Thumb src={e.thumbnail} />
               <div className="min-w-0 flex-1">
                 <div className="line-clamp-2 text-sm text-text">{e.title}</div>
                 {e.unavailableReason ? (
-                  <div className="text-xs text-error">{e.unavailableReason} — will be skipped</div>
+                  <div className="text-xs text-error">{t("willSkip", { reason: e.unavailableReason })}</div>
                 ) : progress ? (
                   <ItemProgressBar item={progress} />
                 ) : (
-                  <div className="mt-0.5 text-xs font-mono text-text-faint">{formatDuration(e.durationSeconds)}</div>
+                  <div className="mt-0.5 text-xs font-mono text-text-faint" dir="ltr">
+                    {formatDuration(e.durationSeconds)}
+                  </div>
                 )}
               </div>
+              <SizeCell bytes={sizeFor(sizes.get(e.index), kind, quality)} pending={sizing} />
               {progress ? (
                 <StatusPill item={progress} />
               ) : (
-                <span className="shrink-0 text-xs font-mono text-text-faint">{formatDuration(e.durationSeconds)}</span>
+                <span className="shrink-0 text-xs font-mono text-text-faint" dir="ltr">
+                  {formatDuration(e.durationSeconds)}
+                </span>
               )}
             </div>
           );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import type { JobSnapshot } from "@/lib/types";
 
 type Filter = "all" | "completed" | "failed" | "playlists" | "audio";
@@ -20,18 +21,19 @@ function matches(job: JobSnapshot, filter: Filter): boolean {
   }
 }
 
-function relativeTime(ts: number): string {
+function relativeTime(ts: number, t: ReturnType<typeof useTranslations<"Time">>): string {
   const diff = Date.now() - ts;
   const min = Math.floor(diff / 60000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min}m ago`;
+  if (min < 1) return t("justNow");
+  if (min < 60) return t("minutes", { count: min });
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
+  if (hr < 24) return t("hours", { count: hr });
   const day = Math.floor(hr / 24);
-  return `${day}d ago`;
+  return t("days", { count: day });
 }
 
 function StatusBadge({ job }: { job: JobSnapshot }) {
+  const t = useTranslations("JobStatus");
   const map: Record<JobSnapshot["status"], string> = {
     completed: "text-success bg-success-soft border-success-border",
     error: "text-error bg-error-soft border-error-border",
@@ -39,16 +41,9 @@ function StatusBadge({ job }: { job: JobSnapshot }) {
     running: "text-accent bg-accent-soft border-accent/30",
     queued: "text-warning bg-warning-soft border-warning-border",
   };
-  const label: Record<JobSnapshot["status"], string> = {
-    completed: "Completed",
-    error: "Failed",
-    cancelled: "Cancelled",
-    running: "Downloading",
-    queued: "Queued",
-  };
   return (
     <span className={`shrink-0 rounded-md border px-2 py-0.5 text-xs font-medium ${map[job.status]}`}>
-      {label[job.status]}
+      {t(job.status)}
     </span>
   );
 }
@@ -64,6 +59,7 @@ export function HistoryView({
   onCleanup: (id: string) => void;
   onCancel: (id: string) => void;
 }) {
+  const t = useTranslations("History");
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
 
@@ -92,34 +88,40 @@ export function HistoryView({
     <div className="flex flex-col gap-5">
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight text-text sm:text-[28px]">
-          Download history
+          {t("title")}
         </h1>
-        <p className="mt-1 text-[15px] text-text-muted">Downloads started from this app this session.</p>
+        <p className="mt-1 text-[15px] text-text-muted">{t("subtitle")}</p>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search history by title or URL…"
+          placeholder={t("search")}
           className="flex-1 rounded-lg border border-border bg-panel px-3.5 py-2.5 text-sm text-text placeholder:text-text-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
         />
         <div className="flex flex-wrap gap-1.5">
-          <FilterChip active={filter === "all"} onClick={() => setFilter("all")} label={`All ${counts.all}`} />
+          <FilterChip active={filter === "all"} onClick={() => setFilter("all")} label={t("filterAll")} count={counts.all} />
           <FilterChip
             active={filter === "completed"}
             onClick={() => setFilter("completed")}
-            label={`Completed ${counts.completed}`}
+            label={t("filterCompleted")}
+            count={counts.completed}
           />
-          <FilterChip active={filter === "playlists"} onClick={() => setFilter("playlists")} label={`Playlists ${counts.playlists}`} />
-          <FilterChip active={filter === "audio"} onClick={() => setFilter("audio")} label={`Audio ${counts.audio}`} />
-          <FilterChip active={filter === "failed"} onClick={() => setFilter("failed")} label={`Failed / cancelled ${counts.failed}`} />
+          <FilterChip
+            active={filter === "playlists"}
+            onClick={() => setFilter("playlists")}
+            label={t("filterPlaylists")}
+            count={counts.playlists}
+          />
+          <FilterChip active={filter === "audio"} onClick={() => setFilter("audio")} label={t("filterAudio")} count={counts.audio} />
+          <FilterChip active={filter === "failed"} onClick={() => setFilter("failed")} label={t("filterFailed")} count={counts.failed} />
         </div>
       </div>
 
       {filtered.length === 0 ? (
         <div className="rounded-xl border border-border bg-panel px-4 py-10 text-center text-sm text-text-muted">
-          {jobs.length === 0 ? "Nothing downloaded yet this session." : "No downloads match that filter."}
+          {jobs.length === 0 ? t("empty") : t("noMatch")}
         </div>
       ) : (
         <div className="flex flex-col gap-3">
@@ -143,12 +145,15 @@ function HistoryRow({
   onCleanup: (id: string) => void;
   onCancel: (id: string) => void;
 }) {
+  const t = useTranslations("History");
+  const tJob = useTranslations("Job");
+  const tTime = useTranslations("Time");
   const firstThumb = job.items[0];
   const active = job.status === "running" || job.status === "queued";
   const title =
     job.items.length === 1
       ? job.items[0]?.title
-      : `${job.items.length} video${job.items.length === 1 ? "" : "s"}${job.options.isPlaylist ? " · playlist" : ""}`;
+      : t("videoCount", { count: job.items.length }) + (job.options.isPlaylist ? t("playlistSuffix") : "");
 
   return (
     <div className="flex items-center gap-4 rounded-xl border border-border bg-panel p-4">
@@ -170,9 +175,9 @@ function HistoryRow({
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium text-text">{title || job.options.url}</div>
         <div className="mt-0.5 truncate text-xs text-text-muted">
-          {relativeTime(job.createdAt)}
+          {relativeTime(job.createdAt, tTime)}
           {" · "}
-          {job.completedItems}/{job.totalItems} item{job.totalItems === 1 ? "" : "s"}
+          {t("items", { done: job.completedItems, total: job.totalItems })}
           {firstThumb?.error && <span className="text-error"> · {firstThumb.error}</span>}
         </div>
       </div>
@@ -185,7 +190,7 @@ function HistoryRow({
             onClick={() => onCancel(job.id)}
             className="rounded-lg border border-border bg-panel-raised px-3 py-1.5 text-xs font-medium text-text hover:bg-border transition-colors"
           >
-            Cancel
+            {tJob("cancel")}
           </button>
         ) : (
           <>
@@ -193,14 +198,14 @@ function HistoryRow({
               onClick={() => onOpenFolder(job.outputDir)}
               className="rounded-lg border border-border bg-panel-raised px-3 py-1.5 text-xs font-medium text-text hover:bg-border transition-colors"
             >
-              Open folder
+              {tJob("openFolder")}
             </button>
             {job.status !== "completed" && (
               <button
                 onClick={() => onCleanup(job.id)}
                 className="rounded-lg border border-border bg-panel-raised px-3 py-1.5 text-xs font-medium text-text-muted hover:text-text hover:bg-border transition-colors"
               >
-                Clean up
+                {t("cleanUp")}
               </button>
             )}
           </>
@@ -210,15 +215,26 @@ function HistoryRow({
   );
 }
 
-function FilterChip({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+function FilterChip({
+  active,
+  onClick,
+  label,
+  count,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count: number;
+}) {
   return (
     <button
       onClick={onClick}
-      className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+      className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
         active ? "border-accent bg-accent-soft text-accent" : "border-border bg-panel text-text-muted hover:text-text"
       }`}
     >
       {label}
+      <span className="font-mono opacity-70">{count}</span>
     </button>
   );
 }

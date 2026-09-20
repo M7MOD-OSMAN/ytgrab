@@ -1,4 +1,4 @@
-import type { DownloadOptions, FolderChoice, JobSnapshot, MediaInfo } from "./types";
+import type { DownloadOptions, EntrySize, FolderChoice, JobSnapshot, MediaInfo } from "./types";
 
 export type SetupStatus = {
   platform: string;
@@ -81,6 +81,50 @@ export function uploadCookies(file: File) {
 
 export function removeCookies() {
   return fetch("/api/cookies", { method: "DELETE" }).then((r) => asJson<{ removed: boolean }>(r));
+}
+
+// Reads the NDJSON size stream, handing over each entry as it lands. The
+// returned function aborts the request (and the yt-dlp process behind it).
+export function streamSizes(
+  url: string,
+  isPlaylist: boolean,
+  onEntry: (entry: EntrySize) => void,
+  onDone?: () => void
+): () => void {
+  const controller = new AbortController();
+
+  (async () => {
+    const res = await fetch("/api/sizes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, isPlaylist }),
+      signal: controller.signal,
+    });
+    if (!res.ok || !res.body) throw new Error("size stream failed");
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          onEntry(JSON.parse(line));
+        } catch {
+          // skip a malformed frame
+        }
+      }
+    }
+  })()
+    .catch(() => {})
+    .finally(() => onDone?.());
+
+  return () => controller.abort();
 }
 
 export function subscribeToJob(id: string, onSnapshot: (s: JobSnapshot) => void): () => void {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import type { JobSnapshot } from "@/lib/types";
 import { Spinner } from "./UrlBar";
 
@@ -14,6 +15,7 @@ export function JobSummaryBar({
   onOpenFolder: () => void;
   onCleanup: () => void;
 }) {
+  const t = useTranslations("Job");
   const pct = job.totalItems > 0 ? Math.round((job.completedItems / job.totalItems) * 100) : 0;
   const failedCount = job.items.filter((i) => i.status === "error").length;
   const active = job.status === "running" || job.status === "queued";
@@ -25,14 +27,14 @@ export function JobSummaryBar({
           <span className={`h-2 w-2 rounded-full ${statusDotColor(job.status)}`} />
           <span className="text-sm font-medium text-text">
             {active
-              ? `Downloading — ${job.completedItems} of ${job.totalItems}`
+              ? t("downloading", { done: job.completedItems, total: job.totalItems })
               : job.status === "completed"
-                ? `Done — ${job.completedItems} of ${job.totalItems}`
+                ? t("done", { done: job.completedItems, total: job.totalItems })
                 : job.status === "cancelled"
-                  ? "Cancelled"
-                  : "Failed"}
+                  ? t("cancelled")
+                  : t("failed")}
           </span>
-          {failedCount > 0 && <span className="text-xs text-error">{failedCount} failed</span>}
+          {failedCount > 0 && <span className="text-xs text-error">{t("failedCount", { count: failedCount })}</span>}
         </div>
         <div className="flex items-center gap-2">
           {active ? (
@@ -43,7 +45,7 @@ export function JobSummaryBar({
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
                 <path d="M6 6h12v12H6z" fill="currentColor" />
               </svg>
-              Cancel
+              {t("cancel")}
             </button>
           ) : (
             <>
@@ -51,14 +53,14 @@ export function JobSummaryBar({
                 onClick={onOpenFolder}
                 className="rounded-lg border border-border bg-panel-raised px-3 py-1.5 text-xs font-medium text-text hover:bg-border transition-colors"
               >
-                Open folder
+                {t("openFolder")}
               </button>
               {job.status !== "completed" && (
                 <button
                   onClick={onCleanup}
                   className="rounded-lg border border-border bg-panel-raised px-3 py-1.5 text-xs font-medium text-text-muted hover:text-text hover:bg-border transition-colors"
                 >
-                  Remove partial files
+                  {t("removePartial")}
                 </button>
               )}
             </>
@@ -81,7 +83,10 @@ export function JobSummaryBar({
       )}
 
       <div className="mt-1.5 truncate text-xs text-text-faint">
-        Saving to <span className="font-mono">{job.outputDir}</span>
+        {t("savingTo")}{" "}
+        <span className="font-mono" dir="ltr">
+          {job.outputDir}
+        </span>
       </div>
     </div>
   );

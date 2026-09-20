@@ -1,25 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { getBrowsers, openFolder, pickFolder, uploadCookies } from "@/lib/api";
 import { Select, type SelectOption } from "@/components/ui/Select";
 import { Spinner } from "./UrlBar";
 import type { DownloadOptions, FolderChoice, QualityChoice } from "@/lib/types";
 
-const QUALITIES: SelectOption[] = [
-  { value: "best", label: "Best available", hint: "auto" },
+type T = ReturnType<typeof useTranslations<"Options">>;
+
+const qualityOptions = (t: T): SelectOption[] => [
+  { value: "best", label: t("qualityBest"), hint: t("hintAuto") },
   { value: "2160", label: "2160p", badge: "4K" },
   { value: "1440", label: "1440p", badge: "2K" },
   { value: "1080", label: "1080p", badge: "FHD" },
   { value: "720", label: "720p", badge: "HD" },
-  { value: "480", label: "480p", hint: "smaller" },
-  { value: "360", label: "360p", hint: "smallest" },
+  { value: "480", label: "480p", hint: t("hintSmaller") },
+  { value: "360", label: "360p", hint: t("hintSmallest") },
 ];
 
-const AUDIO_FORMATS: SelectOption[] = [
-  { value: "mp3", label: "MP3", hint: "most compatible" },
-  { value: "m4a", label: "M4A", hint: "better quality" },
-  { value: "opus", label: "Opus", hint: "smallest" },
+const audioOptions = (t: T): SelectOption[] => [
+  { value: "mp3", label: "MP3", hint: t("hintCompatible") },
+  { value: "m4a", label: "M4A", hint: t("hintBetter") },
+  { value: "opus", label: "Opus", hint: t("hintSmallest") },
 ];
 
 // Sentinel for the "type your own path" entry — no real folder collides with it.
@@ -33,12 +36,16 @@ export function OptionsBar({
   onChange,
   folderChoices,
   defaultOutputDir,
+  playlistFolder,
 }: {
   options: DownloadOptions;
   onChange: (next: Partial<DownloadOptions>) => void;
   folderChoices: FolderChoice[];
   defaultOutputDir: string;
+  /** Sanitized playlist folder created under outputDir, or "" for none. */
+  playlistFolder: string;
 }) {
+  const t = useTranslations("Options");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [browsers, setBrowsers] = useState<string[]>([]);
   const [cookiesFileName, setCookiesFileName] = useState<string | null>(null);
@@ -65,9 +72,9 @@ export function OptionsBar({
     ...folderChoices.map((c) => ({
       value: c.path,
       label: c.label,
-      ...(defaultOutputDir && samePath(c.path, defaultOutputDir) ? { badge: "Default" } : {}),
+      ...(defaultOutputDir && samePath(c.path, defaultOutputDir) ? { badge: t("defaultBadge") } : {}),
     })),
-    { value: CUSTOM, label: "Custom folder…" },
+    { value: CUSTOM, label: t("customFolder") },
   ];
 
   function handleFolderChange(value: string) {
@@ -85,7 +92,7 @@ export function OptionsBar({
     try {
       await openFolder(options.outputDir);
     } catch (err) {
-      setFolderNote(err instanceof Error ? err.message : "Could not open that folder.");
+      setFolderNote(err instanceof Error ? err.message : t("errorOpenFolder"));
     }
   }
 
@@ -100,7 +107,7 @@ export function OptionsBar({
       setCustomMode(!folderChoices.some((c) => samePath(c.path, picked)));
       onChange({ outputDir: picked });
     } catch (err) {
-      setFolderNote(err instanceof Error ? err.message : "Could not open a folder picker.");
+      setFolderNote(err instanceof Error ? err.message : t("errorPicker"));
     } finally {
       setPicking(false);
     }
@@ -111,50 +118,50 @@ export function OptionsBar({
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex rounded-lg border border-border bg-bg p-1">
           <SegButton active={options.kind === "video"} onClick={() => onChange({ kind: "video" })}>
-            Video (MP4)
+            {t("video")}
           </SegButton>
           <SegButton active={options.kind === "audio"} onClick={() => onChange({ kind: "audio" })}>
-            Audio
+            {t("audio")}
           </SegButton>
         </div>
 
         {options.kind === "video" ? (
           <LabeledSelect
-            label="Quality"
+            label={t("quality")}
             value={options.quality}
             onChange={(v) => onChange({ quality: v as QualityChoice })}
-            options={QUALITIES}
+            options={qualityOptions(t)}
           />
         ) : (
           <LabeledSelect
-            label="Format"
+            label={t("format")}
             value={options.audioFormat}
             onChange={(v) => onChange({ audioFormat: v as DownloadOptions["audioFormat"] })}
-            options={AUDIO_FORMATS}
+            options={audioOptions(t)}
           />
         )}
 
-        <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="ms-auto flex flex-wrap items-center gap-x-4 gap-y-2">
           <Checkbox
             checked={options.embedSubtitles}
             onChange={(v) => onChange({ embedSubtitles: v })}
-            label="Subtitles"
+            label={t("subtitles")}
           />
           <Checkbox
             checked={options.embedMetadata}
             onChange={(v) => onChange({ embedMetadata: v })}
-            label="Embed metadata"
+            label={t("embedMetadata")}
           />
           <Checkbox
             checked={options.embedThumbnail}
             onChange={(v) => onChange({ embedThumbnail: v })}
-            label="Embed thumbnail"
+            label={t("embedThumbnail")}
           />
           <button
             onClick={() => setAdvancedOpen((v) => !v)}
             className="flex items-center gap-1 text-xs font-medium text-text-muted hover:text-text transition-colors"
           >
-            Advanced
+            {t("advanced")}
             <svg
               width="12"
               height="12"
@@ -174,15 +181,15 @@ export function OptionsBar({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="flex shrink-0 items-center gap-2 text-sm font-medium text-text">
             <FolderIcon />
-            Save to
+            {t("saveTo")}
           </span>
 
           <Select
-            label="Save to"
+            label={t("saveTo")}
             value={isCustom ? CUSTOM : options.outputDir}
             onChange={handleFolderChange}
             options={folderOptions}
-            placeholder="Choose a folder…"
+            placeholder={t("chooseFolder")}
             buttonClassName="min-w-52 py-2"
           />
 
@@ -190,15 +197,16 @@ export function OptionsBar({
             <input
               value={options.outputDir}
               onChange={(e) => onChange({ outputDir: e.target.value })}
-              placeholder="Type a full folder path"
+              placeholder={t("typePath")}
               spellCheck={false}
+              dir="auto"
               className="min-w-60 flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-sm font-mono text-text placeholder:text-text-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
             />
           ) : (
             <span
               dir="ltr"
               title={options.outputDir}
-              className="min-w-0 flex-1 truncate font-mono text-xs text-text-faint"
+              className="min-w-0 flex-1 truncate text-start font-mono text-xs text-text-faint"
             >
               {options.outputDir}
             </span>
@@ -210,7 +218,7 @@ export function OptionsBar({
             className="flex shrink-0 items-center gap-2 rounded-lg border border-border-strong bg-panel-raised px-3 py-2 text-sm font-medium text-text hover:bg-border transition-colors disabled:opacity-50"
           >
             {picking ? <Spinner /> : <BrowseIcon />}
-            {picking ? "Choosing…" : "Browse…"}
+            {picking ? t("choosing") : t("browse")}
           </button>
 
           <button
@@ -218,13 +226,16 @@ export function OptionsBar({
             disabled={!options.outputDir}
             className="shrink-0 rounded-lg border border-border bg-panel-raised px-3 py-2 text-sm text-text-muted hover:text-text transition-colors disabled:opacity-40"
           >
-            Open
+            {t("open")}
           </button>
         </div>
 
         {picking && (
-          <p className="mt-2 text-xs text-text-faint">
-            A folder chooser is open on your desktop — check behind this window if you don&rsquo;t see it.
+          <p className="mt-2 text-xs text-text-faint">{t("pickerOpen")}</p>
+        )}
+        {playlistFolder && (
+          <p className="mt-2 text-xs text-text-muted">
+            {t("playlistFolder", { folder: playlistFolder })}
           </p>
         )}
         {folderNote && <p className="mt-2 text-xs text-warning">{folderNote}</p>}
@@ -234,7 +245,7 @@ export function OptionsBar({
         <div className="mt-4 grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-xs font-medium text-text-muted">
-              Rate limit <span className="text-text-faint">(KB/s, blank = unlimited)</span>
+              {t("rateLimit")} <span className="text-text-faint">{t("rateLimitHint")}</span>
             </label>
             <input
               type="number"
@@ -243,41 +254,45 @@ export function OptionsBar({
               onChange={(e) =>
                 onChange({ limitRateKBps: e.target.value === "" ? null : Math.max(0, Number(e.target.value)) })
               }
-              placeholder="Unlimited"
+              placeholder={t("unlimited")}
               className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm font-mono text-text placeholder:text-text-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-text-muted">Subtitle languages</label>
+            <label className="mb-1.5 block text-xs font-medium text-text-muted">{t("subtitleLangs")}</label>
             <input
               value={options.subtitleLangs}
               onChange={(e) => onChange({ subtitleLangs: e.target.value })}
               placeholder="en,ar"
               disabled={!options.embedSubtitles}
+              dir="ltr"
               className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm font-mono text-text placeholder:text-text-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 disabled:opacity-40"
             />
           </div>
 
           <div className="sm:col-span-2">
             <label className="mb-1.5 block text-xs font-medium text-text-muted">
-              Sign-in required content <span className="text-text-faint">(private / members-only / age-restricted)</span>
+              {t("signInContent")} <span className="text-text-faint">{t("signInHint")}</span>
             </label>
             <div className="flex gap-2">
               <Select
-                label="Cookie source"
+                label={t("cookieSource")}
                 className="min-w-0 flex-1"
                 fullWidth
                 buttonClassName="px-3 py-2"
                 value={options.cookiesFromBrowser ?? ""}
                 onChange={(v) => onChange({ cookiesFromBrowser: v || null, cookiesFilePath: null })}
                 options={[
-                  { value: "", label: "No cookies" },
-                  ...browsers.map((b) => ({ value: b, label: `Use ${b[0].toUpperCase() + b.slice(1)} cookies` })),
+                  { value: "", label: t("noCookies") },
+                  ...browsers.map((b) => ({
+                    value: b,
+                    label: t("useCookies", { browser: b[0].toUpperCase() + b.slice(1) }),
+                  })),
                 ]}
               />
               <label className="shrink-0 cursor-pointer rounded-lg border border-border bg-panel-raised px-3 py-2 text-sm text-text-muted hover:text-text transition-colors">
-                {cookiesUploading ? "Uploading…" : cookiesFileName ?? "Upload cookies.txt"}
+                {cookiesUploading ? t("uploading") : cookiesFileName ?? t("uploadCookies")}
                 <input
                   type="file"
                   accept=".txt"

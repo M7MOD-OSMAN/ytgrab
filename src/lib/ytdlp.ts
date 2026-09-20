@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
 import { requireBinaries } from "./binaries";
 import type {
+  EntrySize,
   DownloadOptions,
   MediaInfo,
   PlaylistEntrySummary,
@@ -266,4 +267,125 @@ export function buildDownloadArgs(opts: DownloadOptions, archiveFilePath: string
   args.push(opts.url);
 
   return args;
+}
+
+// ---------------------------------------------------------------------------
+// Probing download sizes
+// ---------------------------------------------------------------------------
+
+const QUALITY_CHOICES: QualityChoice[] = ["best", "2160", "1440", "1080", "720", "480", "360"];
+
+type RawFormat = Record<string, unknown>;
+
+const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+// yt-dlp reports filesize only for some formats; tbr (kbit/s) covers the rest.
+function formatBytes(f: RawFormat, durationSeconds: number | null): number | null {
+  const exact = num(f.filesize) ?? num(f.filesize_approx);
+  if (exact != null) return exact;
+  const tbr = num(f.tbr);
+  if (tbr != null && durationSeconds) return Math.round((tbr * 1000 * durationSeconds) / 8);
+  return null;
+}
+
+const isVideoOnly = (f: RawFormat) =>
+  !!f.vcodec && f.vcodec !== "none" && (!f.acodec || f.acodec === "none");
+const isAudioOnly = (f: RawFormat) =>
+  (!f.vcodec || f.vcodec === "none") && !!f.acodec && f.acodec !== "none";
+const isCombined = (f: RawFormat) =>
+  !!f.vcodec && f.vcodec !== "none" && !!f.acodec && f.acodec !== "none";
+
+// yt-dlp emits `formats` worst-to-best, so the last entry that passes a filter
+// is the one its own selector would land on. Verified byte-exact against
+// `yt-dlp -f "bv*[height<=1080]+ba" --print filesize`.
+const bestOf = (formats: RawFormat[]) => (formats.length ? formats[formats.length - 1] : null);
+
+export function entrySizeFromInfo(data: Record<string, unknown>, index: number): EntrySize {
+  const duration = num(data.duration);
+  const formats = Array.isArray(data.formats) ? (data.formats as RawFormat[]) : [];
+  const sized = formats.filter((f) => formatBytes(f, duration) != null);
+
+  const audioFormat = bestOf(sized.filter(isAudioOnly));
+  const audio = audioFormat ? formatBytes(audioFormat, duration) : null;
+
+  const video: Partial<Record<QualityChoice, number>> = {};
+  for (const quality of QUALITY_CHOICES) {
+    const cap = quality === "best" ? Infinity : Number(quality);
+    const fits = (f: RawFormat) => {
+      const h = num(f.height);
+      return h == null ? quality === "best" : h <= cap;
+    };
+    // Mirrors formatSelector(): bv*[h]+ba, falling back to a combined stream.
+    const videoOnly = bestOf(sized.filter((f) => isVideoOnly(f) && fits(f)));
+    if (videoOnly && audio != null) {
+      const v = formatBytes(videoOnly, duration);
+      if (v != null) video[quality] = v + audio;
+      continue;
+    }
+    const combined = bestOf(sized.filter((f) => isCombined(f) && fits(f)));
+    const c = combined ? formatBytes(combined, duration) : null;
+    if (c != null) video[quality] = c;
+  }
+
+  return { index, id: String(data.id ?? ""), video, audio };
+}
+
+export type SizeProbe = { done: Promise<void>; cancel: () => void };
+
+// Streams one size per video as yt-dlp resolves it (roughly 2s each), rather
+// than making the caller wait for the whole playlist.
+export function probeSizes(
+  url: string,
+  isPlaylist: boolean,
+  onEntry: (entry: EntrySize) => void
+): SizeProbe {
+  const { ytDlpPath } = requireBinaries();
+  const args = [
+    "-j",
+    "--no-warnings",
+    "--ignore-errors",
+    "--ignore-no-formats-error",
+    "--socket-timeout",
+    "20",
+    isPlaylist ? "--yes-playlist" : "--no-playlist",
+    url,
+  ];
+
+  const child = spawn(ytDlpPath, args, { windowsHide: true });
+  let cancelled = false;
+  let buffer = "";
+  let index = 0;
+
+  const handleLine = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) return;
+    index += 1;
+    try {
+      onEntry(entrySizeFromInfo(JSON.parse(trimmed), index));
+    } catch {
+      // A malformed or unavailable entry just goes without a size.
+    }
+  };
+
+  const done = new Promise<void>((resolve) => {
+    child.stdout.on("data", (chunk) => {
+      buffer += chunk.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) handleLine(line);
+    });
+    child.on("error", () => resolve());
+    child.on("close", () => {
+      if (!cancelled && buffer.trim()) handleLine(buffer);
+      resolve();
+    });
+  });
+
+  return {
+    done,
+    cancel: () => {
+      cancelled = true;
+      child.kill();
+    },
+  };
 }
