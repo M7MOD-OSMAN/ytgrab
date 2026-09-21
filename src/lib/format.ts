@@ -29,7 +29,7 @@ const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 // long filenames inside still fit under MAX_PATH. "" means unusable.
 export function sanitizeFolderName(name: string): string {
   const cleaned = name
-    .replace(/[<>:"/\|?*\u0000-\u001f]/g, " ")
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 80)
@@ -37,4 +37,14 @@ export function sanitizeFolderName(name: string): string {
     .trim();
   if (!cleaned || WINDOWS_RESERVED.test(cleaned)) return "";
   return cleaned;
+}
+
+// The subfolder a playlist gets under baseDir, or "" for none — including when
+// baseDir already is that folder, so choosing "Downloads\My Playlist" doesn't
+// nest a second "My Playlist" inside it.
+export function playlistFolderFor(baseDir: string, title: string | null): string {
+  const folder = title ? sanitizeFolderName(title) : "";
+  if (!folder) return "";
+  const last = baseDir.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "";
+  return sanitizeFolderName(last).toLowerCase() === folder.toLowerCase() ? "" : folder;
 }

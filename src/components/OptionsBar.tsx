@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { getBrowsers, openFolder, pickFolder, uploadCookies } from "@/lib/api";
 import { Select, type SelectOption } from "@/components/ui/Select";
 import { Spinner } from "./UrlBar";
+import { PathText } from "./ui/PathText";
 import type { DownloadOptions, FolderChoice, QualityChoice } from "@/lib/types";
 
 type T = ReturnType<typeof useTranslations<"Options">>;
@@ -141,7 +142,7 @@ export function OptionsBar({
           />
         )}
 
-        <div className="ms-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="ms-auto flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-bg px-3 py-2">
           <Checkbox
             checked={options.embedSubtitles}
             onChange={(v) => onChange({ embedSubtitles: v })}
@@ -177,7 +178,7 @@ export function OptionsBar({
 
       {/* Destination stays on the face of the panel: it's the one setting
           people need to confirm before every download. */}
-      <div className="mt-4 border-t border-border pt-4">
+      <div className="mt-4 rounded-lg border border-border bg-bg/40 p-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="flex shrink-0 items-center gap-2 text-sm font-medium text-text">
             <FolderIcon />
@@ -203,13 +204,10 @@ export function OptionsBar({
               className="min-w-60 flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-sm font-mono text-text placeholder:text-text-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
             />
           ) : (
-            <span
-              dir="ltr"
-              title={options.outputDir}
+            <PathText
+              path={options.outputDir}
               className="min-w-0 flex-1 truncate text-start font-mono text-xs text-text-faint"
-            >
-              {options.outputDir}
-            </span>
+            />
           )}
 
           <button
@@ -242,7 +240,7 @@ export function OptionsBar({
       </div>
 
       {advancedOpen && (
-        <div className="mt-4 grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
+        <div className="mt-4 grid gap-4 rounded-lg border border-border bg-bg/40 p-3 sm:grid-cols-2">
           <div>
             <label className="mb-1.5 block text-xs font-medium text-text-muted">
               {t("rateLimit")} <span className="text-text-faint">{t("rateLimitHint")}</span>

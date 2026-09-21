@@ -84,6 +84,26 @@ body {
   font-family: var(--font-sans);
 }
 
+/* Tailwind v4's reset leaves buttons on the default arrow. :where() keeps this
+   at zero specificity so :disabled always wins, and the base layer lets any
+   explicit cursor utility on an element override both. */
+@layer base {
+  :where(
+      button,
+      a[href],
+      [role="button"],
+      [role="option"],
+      input[type="checkbox"],
+      input[type="radio"],
+      label:has(> input)
+    ) {
+    cursor: pointer;
+  }
+  :disabled {
+    cursor: not-allowed;
+  }
+}
+
 .font-mono,
 code,
 kbd {

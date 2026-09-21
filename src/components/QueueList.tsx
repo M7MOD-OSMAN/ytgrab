@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import type { EntrySize, JobItemProgress, MediaKind, MediaInfo, QualityChoice } from "@/lib/types";
 import { formatBytes, formatDuration } from "@/lib/format";
@@ -11,24 +12,62 @@ function sizeFor(entry: EntrySize | undefined, kind: MediaKind, quality: Quality
   return (kind === "audio" ? entry.audio : entry.video[quality]) ?? null;
 }
 
-function SizeCell({ bytes, pending }: { bytes: number | null; pending: boolean }) {
-  if (bytes == null) {
-    return (
-      <span className="shrink-0 text-xs font-mono text-text-faint/50" dir="ltr">
-        {pending ? "⋯" : "—"}
-      </span>
-    );
-  }
+function Tag({ children, strong = false }: { children: ReactNode; strong?: boolean }) {
   return (
-    <span className="shrink-0 text-xs font-mono text-text-muted" dir="ltr">
-      {formatBytes(bytes)}
+    <span
+      dir="ltr"
+      className={`shrink-0 rounded border border-border px-1.5 py-px font-mono text-[11px] leading-4 ${
+        strong ? "text-text-muted" : "text-text-faint"
+      }`}
+    >
+      {children}
     </span>
+  );
+}
+
+const CHIP_TONE = {
+  default: "border-border text-text-muted",
+  accent: "border-accent/30 bg-accent-soft text-accent",
+  warning: "border-warning-border bg-warning-soft text-warning",
+};
+
+function Chip({ children, tone = "default" }: { children: ReactNode; tone?: keyof typeof CHIP_TONE }) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium ${CHIP_TONE[tone]}`}>
+      {children}
+    </span>
+  );
+}
+
+// Duration and size share one line under the title, in the same place for
+// every row whether or not a download is running.
+function MetaLine({
+  lead,
+  duration,
+  bytes,
+  pending,
+}: {
+  lead?: ReactNode;
+  duration: string;
+  bytes: number | null;
+  pending: boolean;
+}) {
+  return (
+    <div className="mt-1.5 flex min-w-0 items-center gap-1.5 text-xs">
+      {lead}
+      <Tag>{duration}</Tag>
+      {bytes != null ? (
+        <Tag strong>{formatBytes(bytes)}</Tag>
+      ) : pending ? (
+        <span aria-hidden="true" className="inline-block h-4.5 w-14 animate-pulse rounded border border-border bg-panel-raised" />
+      ) : null}
+    </div>
   );
 }
 
 function Thumb({ src }: { src: string | null }) {
   return (
-    <div className="relative h-[63px] w-28 shrink-0 overflow-hidden rounded-md bg-panel-raised">
+    <div className="relative h-[63px] w-28 shrink-0 overflow-hidden rounded-md border border-border bg-panel-raised">
       {src && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt="" className="h-full w-full object-cover" />
@@ -37,43 +76,77 @@ function Thumb({ src }: { src: string | null }) {
   );
 }
 
+const BAR_COLOR: Record<JobItemProgress["status"], string> = {
+  downloading: "bg-accent",
+  paused: "bg-warning",
+  done: "bg-success",
+  skipped: "bg-success",
+  error: "bg-error",
+  cancelled: "bg-text-faint",
+  pending: "bg-transparent",
+};
+
 function ItemProgressBar({ item }: { item: JobItemProgress }) {
-  const color =
-    item.status === "error"
-      ? "bg-error"
-      : item.status === "done" || item.status === "skipped"
-        ? "bg-success"
-        : item.status === "cancelled"
-          ? "bg-text-faint"
-          : "bg-accent";
+  // A queued item hasn't started, so it shows an empty track rather than a sliver.
+  const width = item.status === "pending" ? 0 : Math.max(2, item.percent);
   return (
-    <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-panel-raised">
-      <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${Math.max(2, item.percent)}%` }} />
+    <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-panel-raised">
+      <div className={`h-full rounded-full transition-all ${BAR_COLOR[item.status]}`} style={{ width: `${width}%` }} />
     </div>
   );
 }
 
-function StatusPill({ item }: { item: JobItemProgress }) {
+const PILL: Record<Exclude<JobItemProgress["status"], "downloading">, string> = {
+  done: "text-success bg-success-soft border-success-border",
+  skipped: "text-success bg-success-soft border-success-border",
+  error: "text-error bg-error-soft border-error-border",
+  cancelled: "text-text-faint bg-panel-raised border-border",
+  pending: "text-warning bg-warning-soft border-warning-border",
+  paused: "text-warning bg-warning-soft border-warning-border",
+};
+
+// Lives in a fixed-width column so every row's progress bar ends at the same
+// point, whether the status is a short pill or a percent with a speed under it.
+function StatusCell({ item }: { item: JobItemProgress }) {
   const t = useTranslations("Status");
-  if (item.status === "downloading") {
-    return (
-      <div className="shrink-0 text-end text-xs" dir="ltr">
-        <div className="font-mono text-accent">{item.percent.toFixed(0)}%</div>
-        {item.speed && <div className="font-mono text-text-faint">{item.speed}</div>}
-      </div>
-    );
-  }
-  const map: Record<string, string> = {
-    done: "text-success bg-success-soft border-success-border",
-    skipped: "text-success bg-success-soft border-success-border",
-    error: "text-error bg-error-soft border-error-border",
-    cancelled: "text-text-faint bg-panel-raised border-border",
-    pending: "text-warning bg-warning-soft border-warning-border",
-  };
   return (
-    <span className={`shrink-0 rounded-md border px-2 py-0.5 text-xs font-medium ${map[item.status] ?? map.pending}`}>
-      {t(item.status)}
-    </span>
+    <div className="flex w-32 shrink-0 justify-end">
+      {item.status === "downloading" ? (
+        <div className="text-end leading-tight">
+          <div className="font-mono text-sm font-semibold tabular-nums text-accent" dir="ltr">
+            {item.percent.toFixed(0)}%
+          </div>
+          {item.speed && (
+            <div className="mt-0.5 whitespace-nowrap font-mono text-[11px] text-text-faint" dir="ltr">
+              {item.speed}
+            </div>
+          )}
+        </div>
+      ) : (
+        <span
+          className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-medium ${PILL[item.status]}`}
+        >
+          {item.status === "paused" && (
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor" />
+              <rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor" />
+            </svg>
+          )}
+          {t(item.status)}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function SelectButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className="rounded-md px-2.5 py-1 text-text-muted hover:bg-panel-raised hover:text-text transition-colors"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -120,39 +193,21 @@ export function QueueList({
     const progress = itemsByIndex?.get(1) ?? null;
     return (
       <div className="rounded-xl border border-border bg-panel p-4">
-        <div className="flex gap-4">
+        <div className="flex items-center gap-4">
           <Thumb src={info.thumbnail} />
           <div className="min-w-0 flex-1">
             <div className="line-clamp-2 text-[15px] font-medium leading-snug text-text">{info.title}</div>
-            <div className="mt-1 text-sm text-text-muted">
-              {info.uploader && <span>{info.uploader} · </span>}
-              <span className="font-mono" dir="ltr">
-                {info.isLive ? t("live") : formatDuration(info.durationSeconds)}
-              </span>
-              {!info.isLive && (
-                <>
-                  {" · "}
-                  <SizeCell bytes={sizeFor(sizes.get(1), kind, quality)} pending={sizing} />
-                </>
-              )}
-            </div>
-            {info.isLive && (
-              <div className="mt-2 text-xs text-warning">{t("liveNote")}</div>
-            )}
-            {info.partOfPlaylistOnly && (
-              <div className="mt-2 text-xs text-text-faint">{t("playlistOnlyNote")}</div>
-            )}
-            {progress && (
-              <div className="mt-2">
-                <ItemProgressBar item={progress} />
-              </div>
-            )}
+            <MetaLine
+              lead={info.uploader ? <span className="me-1 truncate text-text-muted">{info.uploader}</span> : undefined}
+              duration={info.isLive ? t("live") : formatDuration(info.durationSeconds)}
+              bytes={info.isLive ? null : sizeFor(sizes.get(1), kind, quality)}
+              pending={sizing && !info.isLive}
+            />
+            {info.isLive && <div className="mt-2 text-xs text-warning">{t("liveNote")}</div>}
+            {info.partOfPlaylistOnly && <div className="mt-2 text-xs text-text-faint">{t("playlistOnlyNote")}</div>}
+            {progress && <ItemProgressBar item={progress} />}
           </div>
-          {progress && (
-            <div className="shrink-0 self-center">
-              <StatusPill item={progress} />
-            </div>
-          )}
+          {progress && <StatusCell item={progress} />}
         </div>
       </div>
     );
@@ -160,48 +215,48 @@ export function QueueList({
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-panel">
-      <div className="flex items-center justify-between gap-3 border-b border-border p-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border px-4 py-3.5">
         <div className="min-w-0">
-          <div className="line-clamp-1 text-[15px] font-medium leading-snug text-text">
+          <div className="line-clamp-1 text-[15px] font-semibold leading-snug text-text">
             {info.playlistTitle || t("playlist")}
           </div>
-          <div className="mt-0.5 text-sm text-text-muted">
-            {t("videos", { count: entries.length })}
-            {unavailableCount > 0 && (
-              <span className="text-warning"> · {t("unavailable", { count: unavailableCount })}</span>
-            )}
-            {" · "}
-            <span className="text-accent">{t("selected", { count: selected.size })}</span>
-            {totalBytes != null && (
-              <>
-                {" · "}
-                <span className="font-mono text-text" dir="ltr">
-                  {t("totalSize", { size: formatBytes(totalBytes) })}
-                </span>
-              </>
-            )}
-            {sizing && totalBytes == null && <span className="text-text-faint"> · {t("sizing")}</span>}
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <Chip>{t("videos", { count: entries.length })}</Chip>
+            {unavailableCount > 0 && <Chip tone="warning">{t("unavailable", { count: unavailableCount })}</Chip>}
+            <Chip tone="accent">{t("selected", { count: selected.size })}</Chip>
+            {totalBytes != null ? (
+              <Chip>
+                {/* Label and value stay separate so neither drags the other into the wrong direction. */}
+                <span>{t("total")}</span>
+                <bdi className="font-mono text-text" dir="ltr">
+                  {formatBytes(totalBytes)}
+                </bdi>
+                {sizing && <span aria-hidden="true" className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />}
+              </Chip>
+            ) : sizing ? (
+              <Chip>
+                <span className="text-text-faint">{t("sizing")}</span>
+              </Chip>
+            ) : null}
           </div>
         </div>
         {!itemsByIndex && (
-          <div className="flex shrink-0 items-center gap-3 text-xs">
-            <button onClick={onSelectAll} className="text-text-muted hover:text-text transition-colors">
-              {t("all")}
-            </button>
-            <button onClick={onSelectAvailable} className="text-text-muted hover:text-text transition-colors">
-              {t("availableOnly")}
-            </button>
-            <button onClick={onSelectNone} className="text-text-muted hover:text-text transition-colors">
-              {t("none")}
-            </button>
+          <div className="flex shrink-0 items-center gap-0.5 rounded-lg border border-border bg-bg p-0.5 text-xs">
+            <SelectButton onClick={onSelectAll}>{t("all")}</SelectButton>
+            <SelectButton onClick={onSelectAvailable}>{t("availableOnly")}</SelectButton>
+            <SelectButton onClick={onSelectNone}>{t("none")}</SelectButton>
           </div>
         )}
       </div>
-      <div className="max-h-[28rem] divide-y divide-border overflow-y-auto">
+
+      <div className="max-h-112 divide-y divide-border overflow-y-auto">
         {entries.map((e) => {
           const progress = itemsByIndex?.get(e.index) ?? null;
           return (
-            <div key={`${e.index}-${e.id}`} className={`flex items-center gap-3 px-4 py-3 ${!e.isAvailable ? "opacity-50" : ""}`}>
+            <div
+              key={`${e.index}-${e.id}`}
+              className={`flex items-center gap-3 px-4 py-3 ${!e.isAvailable ? "opacity-50" : ""}`}
+            >
               {!itemsByIndex && (
                 <input
                   type="checkbox"
@@ -211,28 +266,23 @@ export function QueueList({
                   className="h-4 w-4 shrink-0 rounded border-border-strong accent-accent"
                 />
               )}
-              <span className="w-6 shrink-0 text-end text-xs font-mono text-text-faint">{e.index}</span>
+              <span className="w-6 shrink-0 text-center font-mono text-xs tabular-nums text-text-faint">{e.index}</span>
               <Thumb src={e.thumbnail} />
               <div className="min-w-0 flex-1">
-                <div className="line-clamp-2 text-sm text-text">{e.title}</div>
+                <div className="line-clamp-2 text-sm leading-snug text-text">{e.title}</div>
                 {e.unavailableReason ? (
-                  <div className="text-xs text-error">{t("willSkip", { reason: e.unavailableReason })}</div>
-                ) : progress ? (
-                  <ItemProgressBar item={progress} />
+                  <div className="mt-1 text-xs text-error">{t("willSkip", { reason: e.unavailableReason })}</div>
                 ) : (
-                  <div className="mt-0.5 text-xs font-mono text-text-faint" dir="ltr">
-                    {formatDuration(e.durationSeconds)}
-                  </div>
+                  <MetaLine
+                    duration={formatDuration(e.durationSeconds)}
+                    bytes={sizeFor(sizes.get(e.index), kind, quality)}
+                    pending={sizing}
+                  />
                 )}
+                {progress && <ItemProgressBar item={progress} />}
               </div>
-              <SizeCell bytes={sizeFor(sizes.get(e.index), kind, quality)} pending={sizing} />
-              {progress ? (
-                <StatusPill item={progress} />
-              ) : (
-                <span className="shrink-0 text-xs font-mono text-text-faint" dir="ltr">
-                  {formatDuration(e.durationSeconds)}
-                </span>
-              )}
+              {/* Every row gets the column while a job exists, so the bars line up. */}
+              {itemsByIndex && (progress ? <StatusCell item={progress} /> : <div className="w-32 shrink-0" />)}
             </div>
           );
         })}

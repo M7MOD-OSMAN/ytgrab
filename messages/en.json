@@ -81,8 +81,8 @@
     "liveNote": "This is a live stream — the download runs until the stream ends.",
     "playlistOnlyNote": "This link also points at a playlist — only this single video will be downloaded.",
     "willSkip": "{reason} — will be skipped",
-    "totalSize": "{size} total",
-    "sizing": "calculating sizes…"
+    "sizing": "calculating sizes…",
+    "total": "Total"
   },
   "Status": {
     "pending": "Queued",
@@ -90,7 +90,8 @@
     "done": "Done",
     "skipped": "Already had it",
     "error": "Failed",
-    "cancelled": "Cancelled"
+    "cancelled": "Cancelled",
+    "paused": "Paused"
   },
   "Job": {
     "downloading": "Downloading — {done} of {total}",
@@ -101,7 +102,11 @@
     "cancel": "Cancel",
     "openFolder": "Open folder",
     "removePartial": "Remove partial files",
-    "savingTo": "Saving to"
+    "savingTo": "Saving to",
+    "paused": "Paused — {done} of {total}",
+    "pause": "Pause",
+    "resume": "Resume",
+    "pausedNote": "Progress is kept. Resume whenever you like."
   },
   "History": {
     "title": "Download history",
@@ -124,7 +129,8 @@
     "error": "Failed",
     "cancelled": "Cancelled",
     "running": "Downloading",
-    "queued": "Queued"
+    "queued": "Queued",
+    "paused": "Paused"
   },
   "Time": {
     "justNow": "just now",

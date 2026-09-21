@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslations } from "next-intl";
 import { TopNav, type Tab } from "@/components/TopNav";
 import { SetupBanner } from "@/components/SetupBanner";
@@ -13,10 +13,14 @@ import {
   getSetup,
   listJobs,
   openFolder as apiOpenFolder,
+  pauseJob as apiPauseJob,
+  resumeJob as apiResumeJob,
   subscribeToJob,
   type SetupStatus,
 } from "@/lib/api";
-import type { DownloadOptions, JobSnapshot } from "@/lib/types";
+import { isJobLive, type DownloadOptions, type JobSnapshot } from "@/lib/types";
+
+const subscribeNever = () => () => {};
 
 export default function Home() {
   const t = useTranslations("Footer");
@@ -24,6 +28,10 @@ export default function Home() {
   const [tab, setTab] = useState<Tab>("downloader");
   const [jobs, setJobs] = useState<Map<string, JobSnapshot>>(new Map());
   const unsubscribers = useRef<Map<string, () => void>>(new Map());
+  const [jobsLoaded, setJobsLoaded] = useState(false);
+  // False while rendering on the server and during hydration, true after:
+  // the downloader may only read saved state once the HTML has been matched.
+  const hydrated = useSyncExternalStore(subscribeNever, () => true, () => false);
 
   const refreshSetup = useCallback(() => {
     getSetup()
@@ -38,10 +46,11 @@ export default function Home() {
         setJobs(new Map(list.map((j) => [j.id, j])));
         // Resume watching anything still active from a previous page load.
         for (const j of list) {
-          if (j.status === "running" || j.status === "queued") watchJob(j.id);
+          if (isJobLive(j.status)) watchJob(j.id);
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setJobsLoaded(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -60,7 +69,7 @@ export default function Home() {
         next.set(id, snap);
         return next;
       });
-      if (snap.status !== "running" && snap.status !== "queued") {
+      if (!isJobLive(snap.status)) {
         unsubscribers.current.get(id)?.();
         unsubscribers.current.delete(id);
       }
@@ -80,6 +89,14 @@ export default function Home() {
 
   const handleCancelJob = useCallback((id: string) => {
     apiCancelJob(id).catch(() => {});
+  }, []);
+
+  const handlePauseJob = useCallback((id: string) => {
+    apiPauseJob(id).catch(() => {});
+  }, []);
+
+  const handleResumeJob = useCallback((id: string) => {
+    apiResumeJob(id).catch(() => {});
   }, []);
 
   const handleCleanupJob = useCallback((id: string) => {
@@ -107,19 +124,34 @@ export default function Home() {
           <SetupBanner status={setup} onRefresh={refreshSetup} />
         </div>}
 
-        {tab === "downloader" ? (
+        {/* Both stay mounted so switching tabs never drops an analyze or a
+            size probe in flight; the inactive one is just hidden. */}
+        <div hidden={tab !== "downloader"}>
           <DownloaderView
+            key={hydrated ? "restored" : "server"}
+            restore={hydrated}
+            jobsLoaded={jobsLoaded}
             defaultOutputDir={setup?.defaultDownloadDir ?? ""}
             folderChoices={setup?.folderChoices ?? []}
             jobs={jobs}
             onStartJob={handleStartJob}
             onCancelJob={handleCancelJob}
+            onPauseJob={handlePauseJob}
+            onResumeJob={handleResumeJob}
             onOpenFolder={handleOpenFolder}
             onCleanupJob={handleCleanupJob}
           />
-        ) : (
-          <HistoryView jobs={jobList} onOpenFolder={handleOpenFolder} onCleanup={handleCleanupJob} onCancel={handleCancelJob} />
-        )}
+        </div>
+        <div hidden={tab !== "history"}>
+          <HistoryView
+            jobs={jobList}
+            onOpenFolder={handleOpenFolder}
+            onCleanup={handleCleanupJob}
+            onCancel={handleCancelJob}
+            onPause={handlePauseJob}
+            onResume={handleResumeJob}
+          />
+        </div>
       </main>
 
       <footer className="border-t border-border">

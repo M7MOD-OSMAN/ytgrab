@@ -45,6 +45,14 @@ export function cancelJob(id: string) {
   return fetch(`/api/jobs/${id}`, { method: "DELETE" }).then((r) => asJson<{ cancelled: boolean }>(r));
 }
 
+export function pauseJob(id: string) {
+  return fetch(`/api/jobs/${id}/pause`, { method: "POST" }).then((r) => asJson<{ paused: boolean }>(r));
+}
+
+export function resumeJob(id: string) {
+  return fetch(`/api/jobs/${id}/resume`, { method: "POST" }).then((r) => asJson<{ resumed: boolean }>(r));
+}
+
 export function cleanupJob(id: string) {
   return fetch(`/api/jobs/${id}/cleanup`, { method: "POST" }).then((r) => asJson<{ removed: string[] }>(r));
 }
@@ -122,7 +130,11 @@ export function streamSizes(
     }
   })()
     .catch(() => {})
-    .finally(() => onDone?.());
+    // Not on cancel: a replacement probe may already be running, and a late
+    // onDone from the old one would switch its "calculating" state off.
+    .finally(() => {
+      if (!controller.signal.aborted) onDone?.();
+    });
 
   return () => controller.abort();
 }

@@ -40,6 +40,7 @@ function StatusBadge({ job }: { job: JobSnapshot }) {
     cancelled: "text-text-faint bg-panel-raised border-border",
     running: "text-accent bg-accent-soft border-accent/30",
     queued: "text-warning bg-warning-soft border-warning-border",
+    paused: "text-warning bg-warning-soft border-warning-border",
   };
   return (
     <span className={`shrink-0 rounded-md border px-2 py-0.5 text-xs font-medium ${map[job.status]}`}>
@@ -53,11 +54,15 @@ export function HistoryView({
   onOpenFolder,
   onCleanup,
   onCancel,
+  onPause,
+  onResume,
 }: {
   jobs: JobSnapshot[];
   onOpenFolder: (dir: string) => void;
   onCleanup: (id: string) => void;
   onCancel: (id: string) => void;
+  onPause: (id: string) => void;
+  onResume: (id: string) => void;
 }) {
   const t = useTranslations("History");
   const [filter, setFilter] = useState<Filter>("all");
@@ -69,7 +74,11 @@ export function HistoryView({
     return sorted.filter((j) => {
       if (!matches(j, filter)) return false;
       if (!q) return true;
-      return j.options.url.toLowerCase().includes(q) || j.items.some((i) => i.title.toLowerCase().includes(q));
+      return (
+        j.options.url.toLowerCase().includes(q) ||
+        (j.options.playlistTitle ?? "").toLowerCase().includes(q) ||
+        j.items.some((i) => i.title.toLowerCase().includes(q))
+      );
     });
   }, [sorted, filter, query]);
 
@@ -126,7 +135,15 @@ export function HistoryView({
       ) : (
         <div className="flex flex-col gap-3">
           {filtered.map((job) => (
-            <HistoryRow key={job.id} job={job} onOpenFolder={onOpenFolder} onCleanup={onCleanup} onCancel={onCancel} />
+            <HistoryRow
+              key={job.id}
+              job={job}
+              onOpenFolder={onOpenFolder}
+              onCleanup={onCleanup}
+              onCancel={onCancel}
+              onPause={onPause}
+              onResume={onResume}
+            />
           ))}
         </div>
       )}
@@ -139,21 +156,26 @@ function HistoryRow({
   onOpenFolder,
   onCleanup,
   onCancel,
+  onPause,
+  onResume,
 }: {
   job: JobSnapshot;
   onOpenFolder: (dir: string) => void;
   onCleanup: (id: string) => void;
   onCancel: (id: string) => void;
+  onPause: (id: string) => void;
+  onResume: (id: string) => void;
 }) {
   const t = useTranslations("History");
   const tJob = useTranslations("Job");
   const tTime = useTranslations("Time");
   const firstThumb = job.items[0];
   const active = job.status === "running" || job.status === "queued";
-  const title =
-    job.items.length === 1
-      ? job.items[0]?.title
-      : t("videoCount", { count: job.items.length }) + (job.options.isPlaylist ? t("playlistSuffix") : "");
+  const paused = job.status === "paused";
+  // A playlist is named by its own title; its size moves to the tag beside it.
+  const title = job.options.isPlaylist
+    ? job.options.playlistTitle || t("videoCount", { count: job.items.length })
+    : job.items[0]?.title;
 
   return (
     <div className="flex items-center gap-4 rounded-xl border border-border bg-panel p-4">
@@ -173,7 +195,16 @@ function HistoryRow({
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium text-text">{title || job.options.url}</div>
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="truncate text-sm font-medium text-text">
+            <bdi>{title || job.options.url}</bdi>
+          </div>
+          {job.options.isPlaylist && (
+            <span className="shrink-0 whitespace-nowrap rounded border border-border px-1.5 py-px text-[11px] text-text-muted">
+              {t("videoCount", { count: job.items.length }) + t("playlistSuffix")}
+            </span>
+          )}
+        </div>
         <div className="mt-0.5 truncate text-xs text-text-muted">
           {relativeTime(job.createdAt, tTime)}
           {" · "}
@@ -185,13 +216,24 @@ function HistoryRow({
       <StatusBadge job={job} />
 
       <div className="flex shrink-0 items-center gap-2">
-        {active ? (
-          <button
-            onClick={() => onCancel(job.id)}
-            className="rounded-lg border border-border bg-panel-raised px-3 py-1.5 text-xs font-medium text-text hover:bg-border transition-colors"
-          >
-            {tJob("cancel")}
-          </button>
+        {active || paused ? (
+          <>
+            {active ? (
+              <button onClick={() => onPause(job.id)} className={ROW_BUTTON}>
+                {tJob("pause")}
+              </button>
+            ) : (
+              <button
+                onClick={() => onResume(job.id)}
+                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-on-accent hover:bg-accent-hover transition-colors"
+              >
+                {tJob("resume")}
+              </button>
+            )}
+            <button onClick={() => onCancel(job.id)} className={ROW_BUTTON}>
+              {tJob("cancel")}
+            </button>
+          </>
         ) : (
           <>
             <button
@@ -214,6 +256,9 @@ function HistoryRow({
     </div>
   );
 }
+
+const ROW_BUTTON =
+  "rounded-lg border border-border bg-panel-raised px-3 py-1.5 text-xs font-medium text-text hover:bg-border transition-colors";
 
 function FilterChip({
   active,

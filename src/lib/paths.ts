@@ -2,7 +2,7 @@ import os from "os";
 import path from "path";
 import fs from "fs";
 import type { FolderChoice } from "./types";
-import { sanitizeFolderName } from "./format";
+import { playlistFolderFor } from "./format";
 
 // Plain ~/Downloads. A named subfolder here (the old ~/Downloads/YTGrab) is a
 // trap: if the app itself is unpacked under Downloads, Windows' case-insensitive
@@ -14,7 +14,7 @@ export function defaultDownloadDir(): string {
 // Playlists get their own folder named after the playlist, so a 60-item grab
 // doesn't spray files across the destination.
 export function playlistSubdir(baseDir: string, playlistTitle: string | null): string {
-  const folder = playlistTitle ? sanitizeFolderName(playlistTitle) : "";
+  const folder = playlistFolderFor(baseDir, playlistTitle);
   return folder ? path.join(baseDir, folder) : baseDir;
 }
 

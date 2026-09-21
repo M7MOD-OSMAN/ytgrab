@@ -361,7 +361,11 @@ export function probeSizes(
     if (!trimmed.startsWith("{")) return;
     index += 1;
     try {
-      onEntry(entrySizeFromInfo(JSON.parse(trimmed), index));
+      const data = JSON.parse(trimmed);
+      // A private or deleted entry emits no JSON at all, so a running count
+      // would shift every later size onto the wrong row.
+      const position = typeof data.playlist_index === "number" ? data.playlist_index : index;
+      onEntry(entrySizeFromInfo(data, position));
     } catch {
       // A malformed or unavailable entry just goes without a size.
     }

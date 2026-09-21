@@ -7,18 +7,46 @@ import { OptionsBar } from "./OptionsBar";
 import { QueueList } from "./QueueList";
 import { JobSummaryBar } from "./JobSummaryBar";
 import { fetchInfo, streamSizes } from "@/lib/api";
-import { sanitizeFolderName } from "@/lib/format";
+import { playlistFolderFor } from "@/lib/format";
+import { loadSession, saveSession } from "@/lib/session";
 import type { DownloadOptions, EntrySize, FolderChoice, JobSnapshot, MediaInfo } from "@/lib/types";
 
+const defaultOptions = (outputDir: string): DownloadOptions => ({
+  url: "",
+  outputDir,
+  kind: "video",
+  quality: "1080",
+  audioFormat: "mp3",
+  isPlaylist: false,
+  playlistTitle: null,
+  playlistItems: null,
+  embedThumbnail: false,
+  embedSubtitles: false,
+  subtitleLangs: "en",
+  embedMetadata: true,
+  limitRateKBps: null,
+  cookiesFromBrowser: null,
+  cookiesFilePath: null,
+});
+
 export function DownloaderView({
+  restore,
+  jobsLoaded,
   defaultOutputDir,
   folderChoices,
   jobs,
   onStartJob,
   onCancelJob,
+  onPauseJob,
+  onResumeJob,
   onOpenFolder,
   onCleanupJob,
 }: {
+  /** Read and write the saved session. Off for the server-rendered pass, whose
+      output must match the HTML; page.tsx remounts with it on after hydration. */
+  restore: boolean;
+  /** Whether page.tsx has fetched the job list yet. */
+  jobsLoaded: boolean;
   defaultOutputDir: string;
   folderChoices: FolderChoice[];
   jobs: Map<string, JobSnapshot>;
@@ -27,42 +55,60 @@ export function DownloaderView({
     expectedIds: { id: string; title: string; index: number }[] | null
   ) => Promise<string>;
   onCancelJob: (id: string) => void;
+  onPauseJob: (id: string) => void;
+  onResumeJob: (id: string) => void;
   onOpenFolder: (dir: string) => void;
   onCleanupJob: (id: string) => void;
 }) {
-  const [url, setUrl] = useState("");
-  const [info, setInfo] = useState<MediaInfo | null>(null);
+  // Read once per mount; everything below starts from it.
+  const [session] = useState(() => (restore ? loadSession() : null));
+
+  const [url, setUrl] = useState(session?.url ?? "");
+  const [info, setInfo] = useState<MediaInfo | null>(session?.info ?? null);
   const [infoLoading, setInfoLoading] = useState(false);
   const [infoError, setInfoError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(() => new Set(session?.selected ?? []));
+  const [currentJobId, setCurrentJobId] = useState<string | null>(session?.currentJobId ?? null);
   const [starting, setStarting] = useState(false);
-  const [sizes, setSizes] = useState<Map<number, EntrySize>>(new Map());
-  const [sizing, setSizing] = useState(false);
+  const [sizes, setSizes] = useState<Map<number, EntrySize>>(
+    () => new Map((session?.sizes ?? []).map((s) => [s.index, s]))
+  );
+  // Sizes were still streaming when the page went away: pick the probe back up.
+  const [resumeProbe] = useState(() => {
+    if (!session?.info) return null;
+    const saved = session.info;
+    const expected = saved.type === "playlist" ? (saved.entries ?? []).filter((e) => e.isAvailable).length : 1;
+    if ((session.sizes ?? []).length >= expected) return null;
+    return { url: saved.webpageUrl || session.url, isPlaylist: saved.type === "playlist" };
+  });
+  const [sizing, setSizing] = useState(resumeProbe !== null);
   const stopSizing = useRef<(() => void) | null>(null);
 
   // A probe outlives the component if the user navigates away mid-playlist.
   useEffect(() => () => stopSizing.current?.(), []);
 
+  useEffect(() => {
+    if (!resumeProbe) return;
+    stopSizing.current = streamSizes(
+      resumeProbe.url,
+      resumeProbe.isPlaylist,
+      (entry) => setSizes((prev) => new Map(prev).set(entry.index, entry)),
+      () => setSizing(false)
+    );
+    return () => stopSizing.current?.();
+  }, [resumeProbe]);
+
   const t = useTranslations("Downloader");
 
-  const [options, setOptions] = useState<DownloadOptions>({
-    url: "",
-    outputDir: defaultOutputDir,
-    kind: "video",
-    quality: "1080",
-    audioFormat: "mp3",
-    isPlaylist: false,
-    playlistTitle: null,
-    playlistItems: null,
-    embedThumbnail: false,
-    embedSubtitles: false,
-    subtitleLangs: "en",
-    embedMetadata: true,
-    limitRateKBps: null,
-    cookiesFromBrowser: null,
-    cookiesFilePath: null,
-  });
+  const [options, setOptions] = useState<DownloadOptions>(() => ({
+    ...defaultOptions(defaultOutputDir),
+    ...session?.options,
+  }));
+
+  useEffect(() => {
+    if (!restore) return;
+    saveSession({ url, info, selected: [...selected], currentJobId, options, sizes: [...sizes.values()] });
+  }, [restore, url, info, selected, currentJobId, options, sizes]);
 
   // defaultOutputDir arrives asynchronously (it comes from /api/setup),
   // usually after this component's initial state is already set up with an
@@ -78,12 +124,15 @@ export function DownloaderView({
   }
 
   const currentJob = currentJobId ? jobs.get(currentJobId) ?? null : null;
+  // After a reload the job id is back before the job list is. Hold the progress
+  // view until it arrives rather than flashing checkboxes and download buttons.
+  const awaitingJob = !!currentJobId && !currentJob && !jobsLoaded;
   const itemsByIndex = useMemo(() => {
-    if (!currentJob) return null;
+    if (!currentJob) return awaitingJob ? new Map<number, JobSnapshot["items"][number]>() : null;
     const map = new Map<number, JobSnapshot["items"][number]>();
     for (const item of currentJob.items) map.set(item.index, item);
     return map;
-  }, [currentJob]);
+  }, [currentJob, awaitingJob]);
 
   function startSizeProbe(probeUrl: string, isPlaylist: boolean) {
     stopSizing.current?.();
@@ -163,7 +212,7 @@ export function DownloaderView({
         </p>
       </div>
 
-      <UrlBar url={url} onUrlChange={setUrl} onAnalyze={handleAnalyze} loading={infoLoading} disabled={!!jobActive} />
+      <UrlBar url={url} onUrlChange={setUrl} onAnalyze={handleAnalyze} loading={infoLoading} disabled={!!jobActive || awaitingJob} />
 
       {infoError && (
         <div className="rounded-xl border border-error-border bg-error-soft px-4 py-3 text-sm text-error">{infoError}</div>
@@ -177,7 +226,7 @@ export function DownloaderView({
             folderChoices={folderChoices}
             defaultOutputDir={defaultOutputDir}
             playlistFolder={
-              info.type === "playlist" ? sanitizeFolderName(info.playlistTitle ?? "") : ""
+              info.type === "playlist" ? playlistFolderFor(options.outputDir, info.playlistTitle) : ""
             }
           />
 
@@ -204,7 +253,7 @@ export function DownloaderView({
             kind={options.kind}
           />
 
-          {!currentJob && (
+          {!currentJob && !awaitingJob && (
             <div className="flex flex-wrap items-center gap-3">
               {isPlaylist ? (
                 <>
@@ -239,6 +288,8 @@ export function DownloaderView({
             <JobSummaryBar
               job={currentJob}
               onCancel={() => onCancelJob(currentJob.id)}
+              onPause={() => onPauseJob(currentJob.id)}
+              onResume={() => onResumeJob(currentJob.id)}
               onOpenFolder={() => onOpenFolder(currentJob.outputDir)}
               onCleanup={() => onCleanupJob(currentJob.id)}
             />

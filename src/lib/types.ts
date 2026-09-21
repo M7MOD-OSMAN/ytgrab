@@ -55,6 +55,7 @@ export type MediaInfo = {
 export type JobItemStatus =
   | "pending"
   | "downloading"
+  | "paused"
   | "done"
   | "skipped"
   | "error"
@@ -71,7 +72,13 @@ export type JobItemProgress = {
   error: string | null;
 };
 
-export type JobStatus = "queued" | "running" | "completed" | "cancelled" | "error";
+export type JobStatus = "queued" | "running" | "paused" | "completed" | "cancelled" | "error";
+
+// Still owns its partial files and keeps its event stream open. Paused counts:
+// resuming continues the same job rather than starting a new one.
+export function isJobLive(status: JobStatus): boolean {
+  return status === "running" || status === "queued" || status === "paused";
+}
 
 export type JobSnapshot = {
   id: string;

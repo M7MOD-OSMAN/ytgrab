@@ -5,7 +5,7 @@ import path from "path";
 import fs from "fs";
 import { requireBinaries } from "./binaries";
 import { buildDownloadArgs, PROGRESS_MARKER } from "./ytdlp";
-import type { DownloadOptions, JobItemProgress, JobSnapshot, JobStatus } from "./types";
+import { isJobLive, type DownloadOptions, type JobItemProgress, type JobSnapshot, type JobStatus } from "./types";
 import { ensureWritableDir, playlistSubdir } from "./paths";
 
 type Job = {
@@ -24,6 +24,7 @@ type Job = {
   errorMessage: string | null;
   outDir: string;
   killedByUser: boolean;
+  pausedByUser: boolean;
 };
 
 // Survive Next.js dev-mode module reloads by stashing the store on globalThis.
@@ -58,6 +59,13 @@ function getOrCreateItem(job: Job, id: string, title?: string): JobItemProgress 
     item.title = title;
   }
   return item;
+}
+
+// With a planned list, only its ids are videos. Other lines share the
+// "[tag] id:" shape — "[youtube:tab] <playlist id>: Downloading webpage" — and
+// would otherwise become a phantom row that inflates the done count.
+function isTrackedId(job: Job, id: string): boolean {
+  return !job.expectedIds || job.expectedIds.some((e) => e.id === id);
 }
 
 function markPreviousDownloading(job: Job, doneStatus: "done" = "done") {
@@ -101,6 +109,7 @@ const NON_ID_STATUS_WORDS = new Set([
 const ERROR_ID_LINE = /^ERROR:\s*\[[\w:-]+\]\s*([\w-]{6,}):\s*(.+)$/;
 const GENERIC_ERROR_LINE = /^ERROR:\s*(.+)$/;
 const ARCHIVE_SKIP_LINE = /already been recorded in the archive/;
+const ARCHIVE_SKIP_ID_LINE = /^\[download\]\s+([\w-]{6,}):\s.*has already been recorded in the archive/;
 const PLAYLIST_POSITION_LINE = /^\[download\] Downloading item (\d+) of (\d+)/;
 const DESTINATION_LINE = /^\[download\] Destination:\s*(.+)$/;
 const ALREADY_DOWNLOADED_LINE = /^\[download\]\s+(.+) has already been downloaded/;
@@ -146,7 +155,7 @@ export function handleLine(job: Job, raw: string, isStderr: boolean) {
   }
 
   const errIdMatch = line.match(ERROR_ID_LINE);
-  if (errIdMatch) {
+  if (errIdMatch && isTrackedId(job, errIdMatch[1])) {
     const [, id, reason] = errIdMatch;
     if (job.currentId && job.currentId !== id) markPreviousDownloading(job);
     const item = getOrCreateItem(job, id);
@@ -158,10 +167,18 @@ export function handleLine(job: Job, raw: string, isStderr: boolean) {
     return;
   }
 
-  if (ARCHIVE_SKIP_LINE.test(line) || ALREADY_DOWNLOADED_LINE.test(line)) {
-    if (job.currentId) {
-      const item = getOrCreateItem(job, job.currentId);
-      item.status = "skipped";
+  // Archive hits name their own id and arrive with no "[youtube] id:" line
+  // ahead of them, so job.currentId is stale here — trust the id in the line.
+  const archiveHit = line.match(ARCHIVE_SKIP_ID_LINE);
+  if (archiveHit || ARCHIVE_SKIP_LINE.test(line) || ALREADY_DOWNLOADED_LINE.test(line)) {
+    const id = archiveHit ? archiveHit[1] : job.currentId;
+    if (id) {
+      const item = getOrCreateItem(job, id);
+      if (archiveHit && (item.status === "paused" || item.status === "downloading")) {
+        item.status = "done"; // finished in this job, right before a pause
+      } else if (item.status !== "done") {
+        item.status = "skipped";
+      }
       item.percent = 100;
     }
     pushLog(job, line);
@@ -170,12 +187,12 @@ export function handleLine(job: Job, raw: string, isStderr: boolean) {
   }
 
   const idMatch = line.match(ID_LINE);
-  if (idMatch && !NON_ID_STATUS_WORDS.has(idMatch[1].toLowerCase())) {
+  if (idMatch && !NON_ID_STATUS_WORDS.has(idMatch[1].toLowerCase()) && isTrackedId(job, idMatch[1])) {
     const id = idMatch[1];
     if (job.currentId && job.currentId !== id) markPreviousDownloading(job);
     job.currentId = id;
     const item = getOrCreateItem(job, id);
-    if (item.status === "pending") item.status = "downloading";
+    if (item.status === "pending" || item.status === "paused") item.status = "downloading";
     job.emitter.emit("update");
     return;
   }
@@ -190,6 +207,13 @@ export function handleLine(job: Job, raw: string, isStderr: boolean) {
     const genericErr = line.match(GENERIC_ERROR_LINE);
     if (genericErr) {
       job.errorMessage = genericErr[1];
+      // Download-phase failures (e.g. HTTP 403) carry no id. They belong to the
+      // item in progress; left alone, moving on would mark it "done".
+      const current = job.currentId ? job.items.get(job.currentId) : undefined;
+      if (current && current.status === "downloading") {
+        current.status = "error";
+        current.error = genericErr[1];
+      }
       pushLog(job, line);
       job.emitter.emit("update");
       return;
@@ -197,6 +221,22 @@ export function handleLine(job: Job, raw: string, isStderr: boolean) {
   }
 
   pushLog(job, line);
+}
+
+// yt-dlp appends "<extractor> <id>" only after an item is fully downloaded and
+// post-processed, which makes the archive the honest record of what finished.
+function readArchiveIds(file: string): Set<string> {
+  try {
+    return new Set(
+      fs
+        .readFileSync(file, "utf8")
+        .split(/\r?\n/)
+        .map((line) => line.trim().split(/\s+/)[1])
+        .filter(Boolean)
+    );
+  } catch {
+    return new Set();
+  }
 }
 
 export function createJob(options: DownloadOptions, expectedIds: { id: string; title: string; index: number }[] | null): JobSnapshot {
@@ -225,6 +265,7 @@ export function createJob(options: DownloadOptions, expectedIds: { id: string; t
     errorMessage: null,
     outDir: dirCheck.resolved,
     killedByUser: false,
+    pausedByUser: false,
   };
   job.emitter.setMaxListeners(50);
   jobs.set(id, job);
@@ -259,6 +300,10 @@ function startJob(job: Job) {
     return;
   }
 
+  // Also the resume path: yt-dlp skips archived items and continues the .part.
+  job.killedByUser = false;
+  job.pausedByUser = false;
+  job.errorMessage = null;
   job.status = "running";
   const child = spawn(ytDlpPath, args, { windowsHide: true });
   job.child = child;
@@ -301,22 +346,38 @@ function startJob(job: Job) {
           item.status = "cancelled";
         }
       }
+    } else if (job.pausedByUser) {
+      job.status = "paused";
+      // Keep the partial item's percent so its bar shows where it stopped.
+      for (const item of job.items.values()) {
+        if (item.status === "downloading") {
+          item.status = "paused";
+          item.speed = null;
+          item.eta = null;
+        }
+      }
     } else if (code === 0) {
       job.status = "completed";
       for (const item of job.items.values()) {
-        if (item.status === "pending" || item.status === "downloading") {
+        if (item.status === "pending" || item.status === "downloading" || item.status === "paused") {
           item.status = "done";
           item.percent = 100;
         }
       }
     } else {
       // Not cancelled, but exited non-zero. --ignore-errors means yt-dlp
-      // still tries every item, so this can be a real partial success
-      // (some items done, one or more failed) rather than a total failure.
-      for (const item of job.items.values()) {
-        if (item.status === "pending" || item.status === "downloading") {
+      // still tries every item, so this can be a real partial success. Only the
+      // archive knows what finished; an item cut off mid-download isn't "done".
+      // That includes rows already marked "done" when the queue moved on.
+      const archived = readArchiveIds(archiveFilePath);
+      for (const [itemId, item] of job.items) {
+        if (item.status === "skipped" || item.status === "cancelled") continue;
+        if (archived.has(itemId)) {
           item.status = "done";
           item.percent = 100;
+        } else if (item.status !== "error") {
+          item.status = "error";
+          item.error = item.error ?? job.errorMessage ?? "Did not finish downloading.";
         }
       }
       const anySucceeded = Array.from(job.items.values()).some(
@@ -336,20 +397,52 @@ function startJob(job: Job) {
   });
 }
 
-export function cancelJob(id: string): boolean {
-  const job = jobs.get(id);
-  if (!job || !job.child) return false;
-  job.killedByUser = true;
+// yt-dlp spawns ffmpeg to merge; on Windows killing only the parent orphans
+// it. Either way the .part file survives, which is what makes resume work.
+function killTree(child: ChildProcessWithoutNullStreams) {
   try {
     if (process.platform === "win32") {
-      // Kill the whole process tree (yt-dlp spawns ffmpeg as a child).
-      spawn("taskkill", ["/pid", String(job.child.pid), "/T", "/F"]);
+      spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"]);
     } else {
-      job.child.kill("SIGTERM");
+      child.kill("SIGTERM");
     }
   } catch {
     // best effort
   }
+}
+
+export function cancelJob(id: string): boolean {
+  const job = jobs.get(id);
+  if (!job) return false;
+  // A paused job has no process left to kill, so finalize it directly.
+  if (job.status === "paused") {
+    job.status = "cancelled";
+    for (const item of job.items.values()) {
+      if (item.status === "paused") item.status = "cancelled";
+    }
+    job.emitter.emit("update");
+    job.emitter.emit("done");
+    return true;
+  }
+  if (!job.child) return false;
+  job.killedByUser = true;
+  killTree(job.child);
+  return true;
+}
+
+export function pauseJob(id: string): boolean {
+  const job = jobs.get(id);
+  if (!job || !job.child || job.status !== "running") return false;
+  job.pausedByUser = true;
+  killTree(job.child);
+  return true;
+}
+
+export function resumeJob(id: string): boolean {
+  const job = jobs.get(id);
+  if (!job || job.status !== "paused") return false;
+  startJob(job);
+  job.emitter.emit("update");
   return true;
 }
 
@@ -395,7 +488,7 @@ export function onJobUpdate(id: string, cb: () => void): (() => void) | null {
 export function cleanupOldJobs(maxAgeMs = 1000 * 60 * 60 * 6) {
   const now = Date.now();
   for (const [id, job] of jobs.entries()) {
-    if (job.status !== "running" && job.status !== "queued" && now - job.createdAt > maxAgeMs) {
+    if (!isJobLive(job.status) && now - job.createdAt > maxAgeMs) {
       jobs.delete(id);
     }
   }
