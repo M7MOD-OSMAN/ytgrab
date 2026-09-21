@@ -4,11 +4,12 @@ import fs from "fs";
 import type { FolderChoice } from "./types";
 import { playlistFolderFor } from "./format";
 
-// Plain ~/Downloads. A named subfolder here (the old ~/Downloads/YTGrab) is a
-// trap: if the app itself is unpacked under Downloads, Windows' case-insensitive
-// paths make the two the same folder and downloads land in the source tree.
+// Plain Downloads: the old Downloads/YTGrab was the app's own folder when the app sat in
+// Downloads/ytgrab, since Windows paths are case-insensitive.
 export function defaultDownloadDir(): string {
-  return path.join(os.homedir(), "Downloads");
+  // The desktop app passes the OS's real Downloads folder, which Windows lets
+  // people relocate and Linux names per locale (e.g. ~/Téléchargements).
+  return process.env.STREAMPULL_DOWNLOADS_DIR || path.join(os.homedir(), "Downloads");
 }
 
 // Playlists get their own folder named after the playlist, so a 60-item grab
@@ -77,9 +78,8 @@ export function warnIfPathTooLongForWindows(dir: string): string | null {
   return null;
 }
 
-// Well-known destinations for the "Save to" dropdown. Everything but the
-// default is offered only when it already exists on this machine, so the
-// list never points somewhere the user has no business writing to.
+// Well-known destinations for the "Save to" dropdown. Besides the default, only
+// folders that already exist are offered.
 export function commonDownloadDirs(): FolderChoice[] {
   const home = os.homedir();
   const videos = process.platform === "darwin" ? "Movies" : "Videos";

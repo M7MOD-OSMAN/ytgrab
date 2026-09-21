@@ -198,7 +198,8 @@ function progressTemplate(): string {
   );
 }
 
-export function buildDownloadArgs(opts: DownloadOptions, archiveFilePath: string): string[] {
+// outDir is the job's resolved folder (with any playlist subfolder), not opts.outputDir.
+export function buildDownloadArgs(opts: DownloadOptions, outDir: string, archiveFilePath: string): string[] {
   const { ffmpegPath } = requireBinaries();
   const args: string[] = [
     "--ignore-errors", // keep going past private/deleted/geo-blocked items
@@ -263,7 +264,7 @@ export function buildDownloadArgs(opts: DownloadOptions, archiveFilePath: string
     args.push("--cookies", opts.cookiesFilePath);
   }
 
-  args.push("-P", opts.outputDir);
+  args.push("-P", outDir);
   args.push(opts.url);
 
   return args;

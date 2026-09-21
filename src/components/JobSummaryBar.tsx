@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import type { JobSnapshot } from "@/lib/types";
+import { isYoutubeRefusal, type JobSnapshot } from "@/lib/types";
 import { Spinner } from "./UrlBar";
 import { PathText } from "./ui/PathText";
 
@@ -100,6 +100,16 @@ export function JobSummaryBar({
       </div>
 
       {paused && <div className="mt-2 text-xs text-warning">{t("pausedNote")}</div>}
+
+      {running && job.retryAttempt > 0 && (
+        <div className="mt-2 flex items-center gap-1.5 text-xs text-warning">
+          <Spinner className="shrink-0" />
+          {t("retrying", { attempt: job.retryAttempt, max: job.maxRetries })}
+        </div>
+      )}
+      {!running && !paused && job.items.some((i) => i.status === "error" && isYoutubeRefusal(i.error)) && (
+        <div className="mt-2 text-xs text-text-muted">{t("refusedHint")}</div>
+      )}
 
       {job.errorMessage && (
         <div className="mt-2 flex items-start gap-1.5 text-xs text-error">

@@ -67,6 +67,12 @@ function tryRun(binPath: string, versionFlag: string): string | null {
 }
 
 function locate(name: "yt-dlp" | "ffmpeg", versionFlag: string): BinaryInfo {
+  // 0. The desktop app ships its own builds and passes their paths in.
+  const bundled = name === "yt-dlp" ? process.env.STREAMPULL_YTDLP : process.env.STREAMPULL_FFMPEG;
+  if (bundled && existsSync(bundled)) {
+    const v = tryRun(bundled, versionFlag);
+    if (v) return { found: true, binPath: bundled, version: v };
+  }
   // 1. Rely on PATH resolution by invoking the bare command name, then
   // resolve it to an absolute path — yt-dlp's own --ffmpeg-location expects
   // a real path and won't do a PATH search itself, so a bare "ffmpeg" would

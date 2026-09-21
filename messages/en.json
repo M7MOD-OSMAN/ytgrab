@@ -106,7 +106,9 @@
     "paused": "Paused — {done} of {total}",
     "pause": "Pause",
     "resume": "Resume",
-    "pausedNote": "Progress is kept. Resume whenever you like."
+    "pausedNote": "Progress is kept. Resume whenever you like.",
+    "retrying": "YouTube refused the download — trying again ({attempt} of {max})…",
+    "refusedHint": "YouTube kept refusing these even after retrying. It usually passes — wait a few minutes, then try again."
   },
   "History": {
     "title": "Download history",

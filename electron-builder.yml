@@ -1,0 +1,49 @@
+# Desktop packaging. Build with: node scripts/build-desktop.mjs [win|linux]
+appId: com.m7modosman.streampull
+productName: StreamPull
+electronVersion: 44.4.3
+# Chromium's own UI strings (context menus etc.): only the app's two languages.
+electronLanguages:
+  - en-US
+  - ar
+
+directories:
+  app: desktop/app
+  output: dist-desktop
+  buildResources: desktop/build
+
+# The shell needs no packages; without this the web app's dependencies get packed too.
+files:
+  - "**/*"
+  - "!**/node_modules/**"
+
+# A node_modules at the root of a copy source is always dropped (app-builder-lib's
+# filter.js), so copy from desktop/ and pick server/, where it sits one level down.
+extraResources:
+  - from: desktop
+    to: .
+    filter:
+      - "server/**/*"
+  - from: desktop/bin/${os}
+    to: bin
+
+win:
+  target: nsis
+  icon: desktop/app/icon.png
+  artifactName: StreamPull-Setup-${version}.${ext}
+
+# One click: installs for the current user (no admin prompt) and launches.
+nsis:
+  oneClick: true
+  perMachine: false
+  shortcutName: StreamPull
+  deleteAppDataOnUninstall: false
+
+linux:
+  target:
+    - AppImage
+    - deb
+  icon: desktop/app/icon.png
+  category: AudioVideo
+  synopsis: Download YouTube videos and playlists
+  artifactName: StreamPull-${version}-${arch}.${ext}

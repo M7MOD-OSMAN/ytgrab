@@ -42,3 +42,9 @@ next-env.d.ts
 
 # runtime state: yt-dlp download archive, records which videos were fetched
 .ytgrab-archive.txt
+
+# desktop app: downloaded binaries, assembled server, installers
+/desktop/bin/
+/desktop/.cache/
+/desktop/server/
+/dist-desktop/

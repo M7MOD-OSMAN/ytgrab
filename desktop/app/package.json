@@ -1,0 +1,13 @@
+{
+  "name": "streampull",
+  "productName": "StreamPull",
+  "version": "0.1.0",
+  "description": "Download YouTube videos and playlists to your computer.",
+  "main": "main.cjs",
+  "author": {
+    "name": "M7MOD-OSMAN",
+    "email": "m7mod.osman.m7mod@gmail.com"
+  },
+  "homepage": "https://github.com/M7MOD-OSMAN/ytgrab",
+  "license": "UNLICENSED"
+}

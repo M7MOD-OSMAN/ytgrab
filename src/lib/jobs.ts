@@ -5,7 +5,7 @@ import path from "path";
 import fs from "fs";
 import { requireBinaries } from "./binaries";
 import { buildDownloadArgs, PROGRESS_MARKER } from "./ytdlp";
-import { isJobLive, type DownloadOptions, type JobItemProgress, type JobSnapshot, type JobStatus } from "./types";
+import { isJobLive, isYoutubeRefusal, type DownloadOptions, type JobItemProgress, type JobSnapshot, type JobStatus } from "./types";
 import { ensureWritableDir, playlistSubdir } from "./paths";
 
 type Job = {
@@ -25,7 +25,13 @@ type Job = {
   outDir: string;
   killedByUser: boolean;
   pausedByUser: boolean;
+  retryAttempt: number;
+  // Set while waiting to retry: the job is live but has no process.
+  retryTimer: ReturnType<typeof setTimeout> | null;
 };
+
+// Pause before each automatic retry after YouTube refuses a download.
+const RETRY_DELAYS_MS = [3000, 10000];
 
 // Survive Next.js dev-mode module reloads by stashing the store on globalThis.
 const globalStore = globalThis as unknown as { __ytgrabJobs?: Map<string, Job> };
@@ -61,9 +67,8 @@ function getOrCreateItem(job: Job, id: string, title?: string): JobItemProgress 
   return item;
 }
 
-// With a planned list, only its ids are videos. Other lines share the
-// "[tag] id:" shape — "[youtube:tab] <playlist id>: Downloading webpage" — and
-// would otherwise become a phantom row that inflates the done count.
+// With a planned list, only its ids are videos: "[youtube:tab] <playlist id>: ..." shares
+// the "[tag] id:" shape and would otherwise become a phantom row.
 function isTrackedId(job: Job, id: string): boolean {
   return !job.expectedIds || job.expectedIds.some((e) => e.id === id);
 }
@@ -266,6 +271,8 @@ export function createJob(options: DownloadOptions, expectedIds: { id: string; t
     outDir: dirCheck.resolved,
     killedByUser: false,
     pausedByUser: false,
+    retryAttempt: 0,
+    retryTimer: null,
   };
   job.emitter.setMaxListeners(50);
   jobs.set(id, job);
@@ -293,7 +300,7 @@ function startJob(job: Job) {
   const archiveFilePath = path.join(job.outDir, ".ytgrab-archive.txt");
   let args: string[];
   try {
-    args = buildDownloadArgs(job.options, archiveFilePath);
+    args = buildDownloadArgs(job.options, job.outDir, archiveFilePath);
   } catch (err) {
     job.status = "error";
     job.errorMessage = err instanceof Error ? err.message : "Could not start the download.";
@@ -365,10 +372,8 @@ function startJob(job: Job) {
         }
       }
     } else {
-      // Not cancelled, but exited non-zero. --ignore-errors means yt-dlp
-      // still tries every item, so this can be a real partial success. Only the
-      // archive knows what finished; an item cut off mid-download isn't "done".
-      // That includes rows already marked "done" when the queue moved on.
+      // Non-zero exit can still be a partial success. Only the archive knows what finished,
+      // including rows already marked "done" when the queue moved on.
       const archived = readArchiveIds(archiveFilePath);
       for (const [itemId, item] of job.items) {
         if (item.status === "skipped" || item.status === "cancelled") continue;
@@ -379,6 +384,26 @@ function startJob(job: Job) {
           item.status = "error";
           item.error = item.error ?? job.errorMessage ?? "Did not finish downloading.";
         }
+      }
+      // Refused by YouTube: fresh links usually work, so rerun before calling it failed.
+      // The archive skips what finished, so only the refused items are redone.
+      const refused = [...job.items.values()].filter((i) => i.status === "error" && isYoutubeRefusal(i.error));
+      if (refused.length && job.retryAttempt < RETRY_DELAYS_MS.length) {
+        for (const item of refused) {
+          item.status = "pending";
+          item.error = null;
+        }
+        const delay = RETRY_DELAYS_MS[job.retryAttempt];
+        job.retryAttempt += 1;
+        job.errorMessage = null;
+        job.child = null;
+        job.retryTimer = setTimeout(() => {
+          job.retryTimer = null;
+          startJob(job);
+          job.emitter.emit("update");
+        }, delay);
+        job.emitter.emit("update");
+        return;
       }
       const anySucceeded = Array.from(job.items.values()).some(
         (i) => i.status === "done" || i.status === "skipped"
@@ -411,14 +436,21 @@ function killTree(child: ChildProcessWithoutNullStreams) {
   }
 }
 
+function clearRetry(job: Job) {
+  if (job.retryTimer) clearTimeout(job.retryTimer);
+  job.retryTimer = null;
+}
+
 export function cancelJob(id: string): boolean {
   const job = jobs.get(id);
   if (!job) return false;
-  // A paused job has no process left to kill, so finalize it directly.
-  if (job.status === "paused") {
+  // Paused, or waiting to retry: there's no process to kill, so finalize directly.
+  if (job.status === "paused" || job.retryTimer) {
+    const waitingToRetry = job.retryTimer !== null;
+    clearRetry(job);
     job.status = "cancelled";
     for (const item of job.items.values()) {
-      if (item.status === "paused") item.status = "cancelled";
+      if (item.status === "paused" || (waitingToRetry && item.status === "pending")) item.status = "cancelled";
     }
     job.emitter.emit("update");
     job.emitter.emit("done");
@@ -432,7 +464,15 @@ export function cancelJob(id: string): boolean {
 
 export function pauseJob(id: string): boolean {
   const job = jobs.get(id);
-  if (!job || !job.child || job.status !== "running") return false;
+  if (!job || job.status !== "running") return false;
+  // Between retries there's no process; holding the retry is the pause.
+  if (job.retryTimer) {
+    clearRetry(job);
+    job.status = "paused";
+    job.emitter.emit("update");
+    return true;
+  }
+  if (!job.child) return false;
   job.pausedByUser = true;
   killTree(job.child);
   return true;
@@ -441,6 +481,7 @@ export function pauseJob(id: string): boolean {
 export function resumeJob(id: string): boolean {
   const job = jobs.get(id);
   if (!job || job.status !== "paused") return false;
+  job.retryAttempt = 0; // a manual resume starts with a fresh retry budget
   startJob(job);
   job.emitter.emit("update");
   return true;
@@ -471,6 +512,8 @@ export function snapshot(job: Job): JobSnapshot {
     log: job.log.slice(-100),
     outputDir: job.outDir,
     errorMessage: job.errorMessage,
+    retryAttempt: job.retryAttempt,
+    maxRetries: RETRY_DELAYS_MS.length,
   };
 }
 

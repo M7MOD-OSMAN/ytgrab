@@ -57,7 +57,29 @@ export function cleanupJob(id: string) {
   return fetch(`/api/jobs/${id}/cleanup`, { method: "POST" }).then((r) => asJson<{ removed: string[] }>(r));
 }
 
+// Exposed by the desktop app's preload script; absent in a browser.
+type DesktopBridge = {
+  pickFolder: (current: string) => Promise<string | null>;
+  openFolder: (dir: string) => Promise<string>;
+};
+
+declare global {
+  interface Window {
+    streampull?: DesktopBridge;
+  }
+}
+
+const desktop = () => (typeof window === "undefined" ? undefined : window.streampull);
+
 export function openFolder(dir: string) {
+  const bridge = desktop();
+  if (bridge) {
+    // shell.openPath resolves to an error message, or "" when it worked.
+    return bridge.openFolder(dir).then((error) => {
+      if (error) throw new Error(error);
+      return { opened: true };
+    });
+  }
   return fetch("/api/open-folder", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -66,6 +88,8 @@ export function openFolder(dir: string) {
 }
 
 export function pickFolder(current: string) {
+  const bridge = desktop();
+  if (bridge) return bridge.pickFolder(current).then((path) => ({ path, cancelled: path === null }));
   return fetch("/api/pick-folder", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

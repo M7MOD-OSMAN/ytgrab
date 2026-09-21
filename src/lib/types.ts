@@ -80,6 +80,11 @@ export function isJobLive(status: JobStatus): boolean {
   return status === "running" || status === "queued" || status === "paused";
 }
 
+// YouTube refusing a stream link it just handed out; asking again for fresh links usually works.
+export function isYoutubeRefusal(error: string | null): boolean {
+  return /HTTP Error 403/i.test(error ?? "");
+}
+
 export type JobSnapshot = {
   id: string;
   createdAt: number;
@@ -92,6 +97,9 @@ export type JobSnapshot = {
   log: string[];
   outputDir: string;
   errorMessage: string | null;
+  // Automatic retries used after YouTube refused a download, out of maxRetries.
+  retryAttempt: number;
+  maxRetries: number;
 };
 
 // A destination offered in the "Save to" dropdown.

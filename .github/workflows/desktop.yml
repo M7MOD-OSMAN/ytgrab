@@ -1,0 +1,76 @@
+# Builds and smoke-tests the desktop installers. Push a tag like v0.2.0 (after bumping
+# package.json's version) to publish them on a GitHub Release; or run it by hand.
+name: Desktop builds
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: win
+            exe: dist-desktop/win-unpacked/StreamPull.exe
+          - os: ubuntu-latest
+            target: linux
+            exe: dist-desktop/linux-unpacked/streampull
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Fetch yt-dlp and ffmpeg
+        run: node scripts/fetch-binaries.mjs ${{ matrix.target }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build installer
+        run: node scripts/build-desktop.mjs ${{ matrix.target }}
+
+      - name: Smoke test (Windows)
+        if: matrix.target == 'win'
+        run: node scripts/smoke-desktop.mjs ${{ matrix.exe }}
+
+      # Runners have no display, and Ubuntu 24's user-namespace restriction blocks
+      # Chromium's sandbox for an unpacked build (the .deb installs an AppArmor profile).
+      - name: Smoke test (Linux)
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y xvfb
+          xvfb-run -a node scripts/smoke-desktop.mjs ${{ matrix.exe }} --no-sandbox
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: streampull-${{ matrix.target }}
+          path: |
+            dist-desktop/*.exe
+            dist-desktop/*.AppImage
+            dist-desktop/*.deb
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist-desktop/*.exe
+            dist-desktop/*.AppImage
+            dist-desktop/*.deb
