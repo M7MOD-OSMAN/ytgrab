@@ -104,3 +104,12 @@ src/components/         UI (dark theme, StreamPull design system)
 desktop/app/            Electron shell: starts the server, opens the window
 scripts/                binary fetching, desktop build, smoke test
 ```
+
+## Who made this
+
+Built by **Mahmoud Othman**.
+
+- WhatsApp: [+20 101 749 5064](https://wa.me/201017495064)
+- GitHub: [M7MOD-OSMAN](https://github.com/M7MOD-OSMAN)
+- LinkedIn: [mahmoud-othman](https://www.linkedin.com/in/mahmoud-othman-875bb318b/)
+- Facebook: [M7moud.osman](https://www.facebook.com/M7moud.osman)

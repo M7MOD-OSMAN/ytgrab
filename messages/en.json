@@ -9,7 +9,12 @@
     "setupNeeded": "Setup needed"
   },
   "Footer": {
-    "tagline": "StreamPull — runs locally on this machine, for personal use only."
+    "tagline": "StreamPull — runs locally on this machine, for personal use only.",
+    "madeBy": "Built by <name>Mahmoud Othman</name>",
+    "whatsapp": "WhatsApp",
+    "facebook": "Facebook",
+    "github": "GitHub",
+    "linkedin": "LinkedIn"
   },
   "Downloader": {
     "title": "Download YouTube videos & playlists",

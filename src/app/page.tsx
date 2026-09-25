@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { useTranslations } from "next-intl";
 import { TopNav, type Tab } from "@/components/TopNav";
+import { Footer } from "@/components/Footer";
 import { SetupBanner } from "@/components/SetupBanner";
 import { DownloaderView } from "@/components/DownloaderView";
 import { HistoryView } from "@/components/HistoryView";
@@ -23,7 +23,6 @@ import { isJobLive, type DownloadOptions, type JobSnapshot } from "@/lib/types";
 const subscribeNever = () => () => {};
 
 export default function Home() {
-  const t = useTranslations("Footer");
   const [setup, setSetup] = useState<SetupStatus | null>(null);
   const [tab, setTab] = useState<Tab>("downloader");
   const [jobs, setJobs] = useState<Map<string, JobSnapshot>>(new Map());
@@ -154,16 +153,7 @@ export default function Home() {
         </div>
       </main>
 
-      <footer className="border-t border-border">
-        <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-between gap-2 px-4 py-4 text-xs text-text-faint lg:px-8">
-          <span>{t("tagline")}</span>
-          {setup?.ffmpeg.version && (
-            <span className="font-mono" dir="ltr">
-              {setup.ffmpeg.version.split(" Copyright")[0]}
-            </span>
-          )}
-        </div>
-      </footer>
+      <Footer ffmpegVersion={setup?.ffmpeg.version ?? null} />
     </div>
   );
 }
