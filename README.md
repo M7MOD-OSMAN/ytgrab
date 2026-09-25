@@ -6,11 +6,13 @@ Everything runs on your own machine. Nothing is uploaded anywhere; the app just 
 
 ## Download the app
 
-The desktop app has yt-dlp and ffmpeg built in — install it, paste a link, download. Nothing else to set up. Get it from the [Releases page](https://github.com/M7MOD-OSMAN/ytgrab/releases):
+The desktop app has yt-dlp and ffmpeg built in — install it, paste a link, download. Nothing else to set up.
 
-- **Windows** — `StreamPull-Setup-x.y.z.exe`. It installs for your user only (no admin prompt) and adds a desktop shortcut. The installer isn't code-signed yet, so Windows may say "Windows protected your PC": click **More info → Run anyway**.
-- **Linux (Ubuntu, Debian, Mint…)** — `StreamPull-x.y.z-amd64.deb`, then `sudo apt install ./StreamPull-x.y.z-amd64.deb`.
-- **Other Linux** — `StreamPull-x.y.z-x86_64.AppImage`: `chmod +x` it and run it. On Ubuntu 24+ an AppImage may need `--no-sandbox`; the `.deb` doesn't.
+- **Windows** — [download the installer](https://github.com/M7MOD-OSMAN/ytgrab/releases/latest/download/StreamPull-Setup.exe). It installs for your user only (no admin prompt) and adds a desktop shortcut. The installer isn't code-signed yet, so Windows may say "Windows protected your PC": click **More info → Run anyway**.
+- **Linux (Ubuntu, Debian, Mint…)** — [download the .deb](https://github.com/M7MOD-OSMAN/ytgrab/releases/latest/download/StreamPull-amd64.deb), then `sudo apt install ./StreamPull-amd64.deb`.
+- **Other Linux** — [download the AppImage](https://github.com/M7MOD-OSMAN/ytgrab/releases/latest/download/StreamPull-x86_64.AppImage): `chmod +x` it and run it. On Ubuntu 24+ an AppImage may need `--no-sandbox`; the `.deb` doesn't.
+
+Every version is listed on the [Releases page](https://github.com/M7MOD-OSMAN/ytgrab/releases).
 
 The app keeps yt-dlp up to date on its own (checked once a day), since YouTube changes often enough to break older versions.
 

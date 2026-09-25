@@ -30,7 +30,8 @@ extraResources:
 win:
   target: nsis
   icon: desktop/app/icon.png
-  artifactName: StreamPull-Setup-${version}.${ext}
+  # No version in the name, so /releases/latest/download/<name> stays a valid link.
+  artifactName: StreamPull-Setup.${ext}
 
 # One click: installs for the current user (no admin prompt) and launches.
 nsis:
@@ -46,4 +47,4 @@ linux:
   icon: desktop/app/icon.png
   category: AudioVideo
   synopsis: Download YouTube videos and playlists
-  artifactName: StreamPull-${version}-${arch}.${ext}
+  artifactName: StreamPull-${arch}.${ext}
