@@ -16,6 +16,7 @@ const defaultOptions = (outputDir: string): DownloadOptions => ({
   outputDir,
   kind: "video",
   quality: "1080",
+  tvCompatible: true,
   audioFormat: "mp3",
   isPlaylist: false,
   playlistTitle: null,
@@ -251,6 +252,7 @@ export function DownloaderView({
             sizing={sizing}
             quality={options.quality}
             kind={options.kind}
+            tvCompatible={options.tvCompatible !== false}
           />
 
           {!currentJob && !awaitingJob && (

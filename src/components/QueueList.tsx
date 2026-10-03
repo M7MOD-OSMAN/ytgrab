@@ -7,9 +7,11 @@ import { formatBytes, formatDuration } from "@/lib/format";
 
 // The download merges a video stream with an audio one, so the figure that
 // matters depends on both the media kind and the chosen quality.
-function sizeFor(entry: EntrySize | undefined, kind: MediaKind, quality: QualityChoice): number | null {
+function sizeFor(entry: EntrySize | undefined, kind: MediaKind, quality: QualityChoice, tv: boolean): number | null {
   if (!entry) return null;
-  return (kind === "audio" ? entry.audio : entry.video[quality]) ?? null;
+  if (kind === "audio") return entry.audio;
+  // Sizes saved before TV mode existed have no tv figures; the original estimate is close enough.
+  return (tv ? entry.tv?.[quality] ?? entry.video[quality] : entry.video[quality]) ?? null;
 }
 
 function Tag({ children, strong = false }: { children: ReactNode; strong?: boolean }) {
@@ -78,6 +80,7 @@ function Thumb({ src }: { src: string | null }) {
 
 const BAR_COLOR: Record<JobItemProgress["status"], string> = {
   downloading: "bg-accent",
+  converting: "bg-accent",
   paused: "bg-warning",
   done: "bg-success",
   skipped: "bg-success",
@@ -96,7 +99,7 @@ function ItemProgressBar({ item }: { item: JobItemProgress }) {
   );
 }
 
-const PILL: Record<Exclude<JobItemProgress["status"], "downloading">, string> = {
+const PILL: Record<Exclude<JobItemProgress["status"], "downloading" | "converting">, string> = {
   done: "text-success bg-success-soft border-success-border",
   skipped: "text-success bg-success-soft border-success-border",
   error: "text-error bg-error-soft border-error-border",
@@ -111,15 +114,19 @@ function StatusCell({ item }: { item: JobItemProgress }) {
   const t = useTranslations("Status");
   return (
     <div className="flex w-32 shrink-0 justify-end">
-      {item.status === "downloading" ? (
+      {item.status === "downloading" || item.status === "converting" ? (
         <div className="text-end leading-tight">
           <div className="font-mono text-sm font-semibold tabular-nums text-accent" dir="ltr">
             {item.percent.toFixed(0)}%
           </div>
-          {item.speed && (
-            <div className="mt-0.5 whitespace-nowrap font-mono text-[11px] text-text-faint" dir="ltr">
-              {item.speed}
-            </div>
+          {item.status === "converting" ? (
+            <div className="mt-0.5 whitespace-nowrap text-[11px] text-text-faint">{t("converting")}</div>
+          ) : (
+            item.speed && (
+              <div className="mt-0.5 whitespace-nowrap font-mono text-[11px] text-text-faint" dir="ltr">
+                {item.speed}
+              </div>
+            )
           )}
         </div>
       ) : (
@@ -162,6 +169,7 @@ export function QueueList({
   sizing,
   quality,
   kind,
+  tvCompatible,
 }: {
   info: MediaInfo;
   selected: Set<number>;
@@ -176,6 +184,7 @@ export function QueueList({
   sizing: boolean;
   quality: QualityChoice;
   kind: MediaKind;
+  tvCompatible: boolean;
 }) {
   const t = useTranslations("Queue");
   const entries = info.entries ?? [];
@@ -185,7 +194,7 @@ export function QueueList({
   // download button would actually fetch.
   let totalBytes: number | null = null;
   for (const index of selected) {
-    const bytes = sizeFor(sizes.get(index), kind, quality);
+    const bytes = sizeFor(sizes.get(index), kind, quality, tvCompatible);
     if (bytes != null) totalBytes = (totalBytes ?? 0) + bytes;
   }
 
@@ -200,7 +209,7 @@ export function QueueList({
             <MetaLine
               lead={info.uploader ? <span className="me-1 truncate text-text-muted">{info.uploader}</span> : undefined}
               duration={info.isLive ? t("live") : formatDuration(info.durationSeconds)}
-              bytes={info.isLive ? null : sizeFor(sizes.get(1), kind, quality)}
+              bytes={info.isLive ? null : sizeFor(sizes.get(1), kind, quality, tvCompatible)}
               pending={sizing && !info.isLive}
             />
             {info.isLive && <div className="mt-2 text-xs text-warning">{t("liveNote")}</div>}
@@ -275,7 +284,7 @@ export function QueueList({
                 ) : (
                   <MetaLine
                     duration={formatDuration(e.durationSeconds)}
-                    bytes={sizeFor(sizes.get(e.index), kind, quality)}
+                    bytes={sizeFor(sizes.get(e.index), kind, quality, tvCompatible)}
                     pending={sizing}
                   />
                 )}

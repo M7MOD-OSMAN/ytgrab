@@ -1,11 +1,12 @@
 import { spawn } from "child_process";
 import { requireBinaries } from "./binaries";
-import type {
-  EntrySize,
-  DownloadOptions,
-  MediaInfo,
-  PlaylistEntrySummary,
-  QualityChoice,
+import {
+  isTvMode,
+  type EntrySize,
+  type DownloadOptions,
+  type MediaInfo,
+  type PlaylistEntrySummary,
+  type QualityChoice,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -175,19 +176,50 @@ function heightFilter(quality: QualityChoice): string {
   return `[height<=${quality}]`;
 }
 
+// YouTube serves H.264 up to 1080p, and that's also what TVs handle well.
+function tvQuality(quality: QualityChoice): QualityChoice {
+  return quality === "best" || Number(quality) > 1080 ? "1080" : quality;
+}
+
 function formatSelector(opts: DownloadOptions): string {
   if (opts.kind === "audio") return "ba/b/best";
-  const h = heightFilter(opts.quality);
   // A trailing unconstrained "/best" matters: some sites don't report
   // height at all on their formats (common with the generic/direct-file
   // extractor, and some smaller platforms), so a "[height<=1080]" filter
   // can match nothing and fail the whole download instead of just not
   // getting a preference. Falling back to whatever's best keeps that from
   // being fatal.
-  return `bv*${h}+ba/b${h}/best`;
+  if (!isTvMode(opts)) {
+    const h = heightFilter(opts.quality);
+    return `bv*${h}+ba/b${h}/best`;
+  }
+  // Prefer streams that need no re-encode; anything else gets converted after download.
+  const h = heightFilter(tvQuality(opts.quality));
+  return `bv*[vcodec^=avc1]${h}+ba[acodec^=mp4a]/b[vcodec^=avc1][acodec^=mp4a]${h}/bv*${h}+ba/b${h}/best`;
+}
+
+// TV-safe names: separators become " - ", emoji and symbols go, Arabic (with its marks)
+// stays, 80 characters max. --restrict-filenames would strip Arabic, so clean a copy of the title.
+const FILENAME_CLEANUP: [string, string][] = [
+  [String.raw`\s*[|｜:：/／\\]+\s*`, " - "],
+  [String.raw`[^\w\s\-.,()'&!+،ً-ٰٟ]`, " "],
+  [String.raw`\s*(?:-\s*){2,}`, " - "],
+  [String.raw`\s+`, " "],
+  [String.raw`^(.{80}).+$`, String.raw`\1`],
+  [String.raw`^[\s.\-]+|[\s.\-]+$`, ""],
+];
+
+function filenameArgs(): string[] {
+  const args = ["--parse-metadata", "title:%(fname)s"];
+  for (const [regex, replacement] of FILENAME_CLEANUP) args.push("--replace-in-metadata", "fname", regex, replacement);
+  // The id stays in the archive file; it's only the fallback when nothing printable is left.
+  args.push("-o", "%(fname,id)s.%(ext)s");
+  return args;
 }
 
 export const PROGRESS_MARKER = "YTGRAB_PROGRESS";
+// Printed once per finished file; JSON keeps non-ASCII paths intact through the pipe.
+export const FILE_MARKER = "YTGRAB_FILE";
 
 function progressTemplate(): string {
   return (
@@ -216,8 +248,7 @@ export function buildDownloadArgs(opts: DownloadOptions, outDir: string, archive
     progressTemplate(),
     "--download-archive",
     archiveFilePath,
-    "-o",
-    "%(title).150B [%(id)s].%(ext)s",
+    ...filenameArgs(),
   ];
 
   // Only pass an explicit --ffmpeg-location when we resolved a real path —
@@ -248,6 +279,11 @@ export function buildDownloadArgs(opts: DownloadOptions, outDir: string, archive
     if (opts.audioFormat === "mp3") args.push("--audio-quality", "0");
   } else {
     args.push("-f", formatSelector(opts), "--merge-output-format", "mp4");
+    if (isTvMode(opts)) {
+      args.push("--postprocessor-args", "Merger+ffmpeg_o:-movflags +faststart");
+      // --print implies --quiet, which would hide the progress lines the job parser reads.
+      args.push("--print", `after_move:${FILE_MARKER} {"id": %(id)j, "path": %(filepath)j}`, "--no-quiet");
+    }
   }
 
   if (opts.embedThumbnail) args.push("--embed-thumbnail");
@@ -295,6 +331,8 @@ const isAudioOnly = (f: RawFormat) =>
   (!f.vcodec || f.vcodec === "none") && !!f.acodec && f.acodec !== "none";
 const isCombined = (f: RawFormat) =>
   !!f.vcodec && f.vcodec !== "none" && !!f.acodec && f.acodec !== "none";
+const isAvc = (f: RawFormat) => String(f.vcodec ?? "").startsWith("avc1");
+const isMp4a = (f: RawFormat) => String(f.acodec ?? "").startsWith("mp4a");
 
 // yt-dlp emits `formats` worst-to-best, so the last entry that passes a filter
 // is the one its own selector would land on. Verified byte-exact against
@@ -309,26 +347,37 @@ export function entrySizeFromInfo(data: Record<string, unknown>, index: number):
   const audioFormat = bestOf(sized.filter(isAudioOnly));
   const audio = audioFormat ? formatBytes(audioFormat, duration) : null;
 
-  const video: Partial<Record<QualityChoice, number>> = {};
-  for (const quality of QUALITY_CHOICES) {
+  const fitsUnder = (quality: QualityChoice) => {
     const cap = quality === "best" ? Infinity : Number(quality);
-    const fits = (f: RawFormat) => {
+    return (f: RawFormat) => {
       const h = num(f.height);
       return h == null ? quality === "best" : h <= cap;
     };
-    // Mirrors formatSelector(): bv*[h]+ba, falling back to a combined stream.
-    const videoOnly = bestOf(sized.filter((f) => isVideoOnly(f) && fits(f)));
-    if (videoOnly && audio != null) {
-      const v = formatBytes(videoOnly, duration);
-      if (v != null) video[quality] = v + audio;
-      continue;
-    }
-    const combined = bestOf(sized.filter((f) => isCombined(f) && fits(f)));
-    const c = combined ? formatBytes(combined, duration) : null;
-    if (c != null) video[quality] = c;
+  };
+  // Mirrors formatSelector(): bv*[h]+ba, falling back to a combined stream.
+  const pick = (fits: (f: RawFormat) => boolean, vOk: (f: RawFormat) => boolean, aOk: (f: RawFormat) => boolean) => {
+    const a = bestOf(sized.filter((f) => isAudioOnly(f) && aOk(f)));
+    const aBytes = a ? formatBytes(a, duration) : null;
+    const v = bestOf(sized.filter((f) => isVideoOnly(f) && vOk(f) && fits(f)));
+    const vBytes = v ? formatBytes(v, duration) : null;
+    if (vBytes != null && aBytes != null) return vBytes + aBytes;
+    const c = bestOf(sized.filter((f) => isCombined(f) && vOk(f) && aOk(f) && fits(f)));
+    return c ? formatBytes(c, duration) : null;
+  };
+  const any = () => true;
+
+  const video: Partial<Record<QualityChoice, number>> = {};
+  const tv: Partial<Record<QualityChoice, number>> = {};
+  for (const quality of QUALITY_CHOICES) {
+    const v = pick(fitsUnder(quality), any, any);
+    if (v != null) video[quality] = v;
+    // A video with no H.264 gets re-encoded, so its source size is only a rough guide.
+    const fits = fitsUnder(tvQuality(quality));
+    const t = pick(fits, isAvc, isMp4a) ?? pick(fits, any, any);
+    if (t != null) tv[quality] = t;
   }
 
-  return { index, id: String(data.id ?? ""), video, audio };
+  return { index, id: String(data.id ?? ""), video, tv, audio };
 }
 
 export type SizeProbe = { done: Promise<void>; cancel: () => void };

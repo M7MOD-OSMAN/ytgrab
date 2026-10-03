@@ -7,6 +7,8 @@ export type DownloadOptions = {
   outputDir: string;
   kind: MediaKind;
   quality: QualityChoice; // ignored when kind === "audio"
+  // H.264 + AAC MP4 that TVs play; false keeps YouTube's original streams. Older saved sessions lack it.
+  tvCompatible?: boolean;
   audioFormat: "mp3" | "m4a" | "opus";
   isPlaylist: boolean;
   // Names the per-playlist subfolder created under outputDir.
@@ -55,6 +57,7 @@ export type MediaInfo = {
 export type JobItemStatus =
   | "pending"
   | "downloading"
+  | "converting"
   | "paused"
   | "done"
   | "skipped"
@@ -73,6 +76,10 @@ export type JobItemProgress = {
 };
 
 export type JobStatus = "queued" | "running" | "paused" | "completed" | "cancelled" | "error";
+
+export function isTvMode(opts: Pick<DownloadOptions, "kind" | "tvCompatible">): boolean {
+  return opts.kind === "video" && opts.tvCompatible !== false;
+}
 
 // Still owns its partial files and keeps its event stream open. Paused counts:
 // resuming continues the same job rather than starting a new one.
@@ -111,5 +118,7 @@ export type EntrySize = {
   index: number;
   id: string;
   video: Partial<Record<QualityChoice, number>>;
+  // Same, for the TV-compatible (H.264 + AAC) selection.
+  tv: Partial<Record<QualityChoice, number>>;
   audio: number | null;
 };

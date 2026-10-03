@@ -4,9 +4,21 @@ import { randomUUID } from "crypto";
 import path from "path";
 import fs from "fs";
 import { requireBinaries } from "./binaries";
-import { buildDownloadArgs, PROGRESS_MARKER } from "./ytdlp";
-import { isJobLive, isYoutubeRefusal, type DownloadOptions, type JobItemProgress, type JobSnapshot, type JobStatus } from "./types";
+import { buildDownloadArgs, FILE_MARKER, PROGRESS_MARKER } from "./ytdlp";
+import { isJobLive, isTvMode, isYoutubeRefusal, type DownloadOptions, type JobItemProgress, type JobSnapshot, type JobStatus } from "./types";
 import { ensureWritableDir, playlistSubdir } from "./paths";
+import {
+  convertForTv,
+  describePlan,
+  ffprobePathFor,
+  planTvFix,
+  probeFile,
+  type ConversionHandle,
+  type Probe,
+  type TvPlan,
+} from "./tvcompat";
+
+type TvTask = { id: string; file: string; probe: Probe; plan: TvPlan; finalStatus: "done" | "skipped" };
 
 type Job = {
   id: string;
@@ -28,6 +40,10 @@ type Job = {
   retryAttempt: number;
   // Set while waiting to retry: the job is live but has no process.
   retryTimer: ReturnType<typeof setTimeout> | null;
+  // yt-dlp's final exit code; undefined while it may still run (or retry).
+  ytdlpExit: number | null | undefined;
+  // TV checks run beside yt-dlp: probes in flight, then one conversion at a time.
+  tv: { checking: Set<string>; queue: TvTask[]; active: (TvTask & { handle: ConversionHandle }) | null };
 };
 
 // Pause before each automatic retry after YouTube refuses a download.
@@ -74,7 +90,7 @@ function isTrackedId(job: Job, id: string): boolean {
 }
 
 function markPreviousDownloading(job: Job, doneStatus: "done" = "done") {
-  if (job.currentId) {
+  if (job.currentId && !job.tv.checking.has(job.currentId)) {
     const prev = job.items.get(job.currentId);
     if (prev && prev.status === "downloading") {
       prev.status = doneStatus;
@@ -152,6 +168,16 @@ export function handleLine(job: Job, raw: string, isStderr: boolean) {
     return;
   }
 
+  if (line.startsWith(FILE_MARKER)) {
+    try {
+      const f = JSON.parse(line.slice(FILE_MARKER.length)) as { id?: string; path?: string };
+      if (f.id && f.path) checkForTv(job, f.id, f.path, "done");
+    } catch {
+      // malformed marker — the file just goes unchecked
+    }
+    return;
+  }
+
   const playlistPos = line.match(PLAYLIST_POSITION_LINE);
   if (playlistPos) {
     job.totalItems = Math.max(job.totalItems, parseInt(playlistPos[2], 10));
@@ -177,12 +203,16 @@ export function handleLine(job: Job, raw: string, isStderr: boolean) {
   const archiveHit = line.match(ARCHIVE_SKIP_ID_LINE);
   if (archiveHit || ARCHIVE_SKIP_LINE.test(line) || ALREADY_DOWNLOADED_LINE.test(line)) {
     const id = archiveHit ? archiveHit[1] : job.currentId;
-    if (id) {
+    const busy = id !== null && (job.tv.checking.has(id) || job.items.get(id)?.status === "converting");
+    if (id && !busy) {
       const item = getOrCreateItem(job, id);
       if (archiveHit && (item.status === "paused" || item.status === "downloading")) {
         item.status = "done"; // finished in this job, right before a pause
       } else if (item.status !== "done") {
         item.status = "skipped";
+        // Files from before the TV fix carry "[id]" in their name, so they can still be found and fixed.
+        const old = archiveHit && isTvMode(job.options) ? findFileById(job.outDir, id) : null;
+        if (old) checkForTv(job, id, old, "skipped");
       }
       item.percent = 100;
     }
@@ -244,6 +274,135 @@ function readArchiveIds(file: string): Set<string> {
   }
 }
 
+function findFileById(dir: string, id: string): string | null {
+  try {
+    const tag = `[${id}]`;
+    const name = fs.readdirSync(dir).find((n) => n.includes(tag) && /\.(mp4|mkv|webm|mov)$/i.test(n));
+    return name ? path.join(dir, name) : null;
+  } catch {
+    return null;
+  }
+}
+
+// The item holds its pre-check status while probed; finalStatus is what it returns to.
+function checkForTv(job: Job, id: string, file: string, finalStatus: TvTask["finalStatus"]) {
+  let ffmpegPath: string;
+  try {
+    ffmpegPath = requireBinaries().ffmpegPath;
+  } catch {
+    return;
+  }
+  const item = getOrCreateItem(job, id);
+  job.tv.checking.add(id);
+  probeFile(ffprobePathFor(ffmpegPath), file)
+    .then((probe) => {
+      const plan = planTvFix(probe, file);
+      if (!plan || job.status === "cancelled" || job.killedByUser) {
+        item.status = finalStatus;
+        item.percent = 100;
+        if (!plan) pushLog(job, `[tv] plays on TVs as is: ${path.basename(file)}`);
+        return;
+      }
+      item.status = job.status === "paused" || job.pausedByUser ? "paused" : "converting";
+      item.percent = 0;
+      item.speed = null;
+      item.eta = null;
+      job.tv.queue.push({ id, file, probe, plan, finalStatus });
+    })
+    .catch((err) => {
+      item.status = finalStatus;
+      item.percent = 100;
+      const reason = (err instanceof Error ? err.message : String(err)).trim().split(/\r?\n/).pop();
+      pushLog(job, `[tv] could not check ${path.basename(file)}: ${reason}`);
+    })
+    .finally(() => {
+      job.tv.checking.delete(id);
+      job.emitter.emit("update");
+      pumpTv(job);
+    });
+}
+
+function pumpTv(job: Job) {
+  if (job.tv.active || job.status !== "running" || job.killedByUser || job.pausedByUser) return;
+  const task = job.tv.queue.shift();
+  if (!task) return maybeFinish(job);
+  const item = getOrCreateItem(job, task.id);
+  let ffmpegPath: string;
+  try {
+    ffmpegPath = requireBinaries().ffmpegPath;
+  } catch {
+    return;
+  }
+  item.status = "converting";
+  item.percent = 0;
+  pushLog(job, `[tv] converting ${path.basename(task.file)} (${describePlan(task.plan)})`);
+  const handle = convertForTv(ffmpegPath, task.file, task.probe, task.plan, (percent) => {
+    item.percent = percent;
+    job.emitter.emit("update");
+  });
+  job.tv.active = { ...task, handle };
+  handle.done.then((result) => {
+    if (handle.aborted()) return; // pause/cancel already settled the item
+    job.tv.active = null;
+    if (result.ok) {
+      item.status = task.finalStatus;
+      item.percent = 100;
+      pushLog(job, `[tv] converted: ${path.basename(result.file)}`);
+    } else {
+      item.status = "error";
+      item.error = `Saved, but could not convert it for TV playback: ${result.error}`;
+      pushLog(job, `[tv] conversion failed for ${path.basename(task.file)}: ${result.error}`);
+    }
+    job.emitter.emit("update");
+    pumpTv(job);
+  });
+}
+
+// Stops conversion work. Paused tasks stay queued, the interrupted one first, to restart on resume.
+function haltTv(job: Job, mark: "paused" | "cancelled") {
+  const tasks = [...job.tv.queue];
+  if (job.tv.active) {
+    job.tv.active.handle.abort();
+    tasks.unshift(job.tv.active);
+    job.tv.active = null;
+  }
+  for (const t of tasks) {
+    const item = job.items.get(t.id);
+    if (item) item.status = mark;
+  }
+  job.tv.queue = mark === "paused" ? tasks : [];
+}
+
+const tvBusy = (job: Job) => job.tv.checking.size > 0 || job.tv.queue.length > 0 || job.tv.active !== null;
+
+function maybeFinish(job: Job) {
+  if (job.status !== "running" || job.child || job.retryTimer || job.ytdlpExit === undefined || tvBusy(job)) return;
+  finalize(job, job.ytdlpExit);
+}
+
+function finalize(job: Job, code: number | null) {
+  if (code === 0) {
+    job.status = "completed";
+    for (const item of job.items.values()) {
+      if (item.status === "pending" || item.status === "downloading" || item.status === "paused") {
+        item.status = "done";
+        item.percent = 100;
+      }
+    }
+  } else {
+    const anySucceeded = Array.from(job.items.values()).some((i) => i.status === "done" || i.status === "skipped");
+    const anyFailed = Array.from(job.items.values()).some((i) => i.status === "error");
+    if (anySucceeded && (anyFailed || job.options.isPlaylist)) {
+      job.status = "completed"; // partial success — details are per-item
+    } else {
+      job.status = "error";
+      if (!job.errorMessage) job.errorMessage = "yt-dlp exited with an error.";
+    }
+  }
+  job.emitter.emit("update");
+  job.emitter.emit("done");
+}
+
 export function createJob(options: DownloadOptions, expectedIds: { id: string; title: string; index: number }[] | null): JobSnapshot {
   const targetDir = options.isPlaylist
     ? playlistSubdir(options.outputDir, options.playlistTitle)
@@ -273,6 +432,8 @@ export function createJob(options: DownloadOptions, expectedIds: { id: string; t
     pausedByUser: false,
     retryAttempt: 0,
     retryTimer: null,
+    ytdlpExit: undefined,
+    tv: { checking: new Set(), queue: [], active: null },
   };
   job.emitter.setMaxListeners(50);
   jobs.set(id, job);
@@ -311,6 +472,7 @@ function startJob(job: Job) {
   job.killedByUser = false;
   job.pausedByUser = false;
   job.errorMessage = null;
+  job.ytdlpExit = undefined;
   job.status = "running";
   const child = spawn(ytDlpPath, args, { windowsHide: true });
   job.child = child;
@@ -364,19 +526,18 @@ function startJob(job: Job) {
         }
       }
     } else if (code === 0) {
-      job.status = "completed";
-      for (const item of job.items.values()) {
-        if (item.status === "pending" || item.status === "downloading" || item.status === "paused") {
-          item.status = "done";
-          item.percent = 100;
-        }
-      }
+      job.child = null;
+      job.ytdlpExit = code;
+      maybeFinish(job); // waits for any TV conversions still running
+      job.emitter.emit("update");
+      return;
     } else {
       // Non-zero exit can still be a partial success. Only the archive knows what finished,
       // including rows already marked "done" when the queue moved on.
       const archived = readArchiveIds(archiveFilePath);
       for (const [itemId, item] of job.items) {
         if (item.status === "skipped" || item.status === "cancelled") continue;
+        if (item.status === "converting" || job.tv.checking.has(itemId)) continue;
         if (archived.has(itemId)) {
           item.status = "done";
           item.percent = 100;
@@ -405,16 +566,11 @@ function startJob(job: Job) {
         job.emitter.emit("update");
         return;
       }
-      const anySucceeded = Array.from(job.items.values()).some(
-        (i) => i.status === "done" || i.status === "skipped"
-      );
-      const anyFailed = Array.from(job.items.values()).some((i) => i.status === "error");
-      if (anySucceeded && (anyFailed || job.options.isPlaylist)) {
-        job.status = "completed"; // partial success — details are per-item
-      } else {
-        job.status = "error";
-        if (!job.errorMessage) job.errorMessage = "yt-dlp exited with an error.";
-      }
+      job.child = null;
+      job.ytdlpExit = code;
+      maybeFinish(job);
+      job.emitter.emit("update");
+      return;
     }
     job.child = null;
     job.emitter.emit("update");
@@ -443,9 +599,10 @@ function clearRetry(job: Job) {
 
 export function cancelJob(id: string): boolean {
   const job = jobs.get(id);
-  if (!job) return false;
-  // Paused, or waiting to retry: there's no process to kill, so finalize directly.
-  if (job.status === "paused" || job.retryTimer) {
+  if (!job || !isJobLive(job.status)) return false;
+  haltTv(job, "cancelled");
+  // Paused, waiting to retry, or only converting: no yt-dlp to kill, so finalize directly.
+  if (job.status === "paused" || job.retryTimer || !job.child) {
     const waitingToRetry = job.retryTimer !== null;
     clearRetry(job);
     job.status = "cancelled";
@@ -456,7 +613,6 @@ export function cancelJob(id: string): boolean {
     job.emitter.emit("done");
     return true;
   }
-  if (!job.child) return false;
   job.killedByUser = true;
   killTree(job.child);
   return true;
@@ -465,14 +621,14 @@ export function cancelJob(id: string): boolean {
 export function pauseJob(id: string): boolean {
   const job = jobs.get(id);
   if (!job || job.status !== "running") return false;
-  // Between retries there's no process; holding the retry is the pause.
-  if (job.retryTimer) {
+  haltTv(job, "paused");
+  // Between retries, or once yt-dlp is done, there's no process; holding still is the pause.
+  if (job.retryTimer || !job.child) {
     clearRetry(job);
     job.status = "paused";
     job.emitter.emit("update");
     return true;
   }
-  if (!job.child) return false;
   job.pausedByUser = true;
   killTree(job.child);
   return true;
@@ -482,7 +638,14 @@ export function resumeJob(id: string): boolean {
   const job = jobs.get(id);
   if (!job || job.status !== "paused") return false;
   job.retryAttempt = 0; // a manual resume starts with a fresh retry budget
-  startJob(job);
+  for (const task of job.tv.queue) {
+    const item = job.items.get(task.id);
+    if (item) item.status = "converting";
+  }
+  // yt-dlp already finished: only conversions are left to pick up.
+  if (job.ytdlpExit !== undefined) job.status = "running";
+  else startJob(job);
+  pumpTv(job);
   job.emitter.emit("update");
   return true;
 }
@@ -544,7 +707,7 @@ export function deletePartialFiles(id: string): { removed: string[] } {
   try {
     const files = fs.readdirSync(job.outDir);
     for (const f of files) {
-      if (f.endsWith(".part") || f.endsWith(".ytdl")) {
+      if (f.endsWith(".part") || f.endsWith(".ytdl") || f.endsWith(".tvtmp.mp4")) {
         try {
           fs.unlinkSync(path.join(job.outDir, f));
           removed.push(f);

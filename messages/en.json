@@ -72,7 +72,12 @@
     "useCookies": "Use {browser} cookies",
     "uploadCookies": "Upload cookies.txt",
     "uploading": "Uploading…",
-    "playlistFolder": "Playlist files go into a “{folder}” subfolder."
+    "playlistFolder": "Playlist files go into a “{folder}” subfolder.",
+    "tvMode": "For TV",
+    "originalMode": "Original",
+    "tvModeHint": "H.264 + AAC MP4 that plays on any TV from a USB drive, up to 1080p. Files that need it are converted after downloading.",
+    "originalModeHint": "YouTube’s original streams (often AV1/VP9 + Opus), up to 4K. Plays on computers and phones; many TVs can’t play it.",
+    "hintUpTo1080": "up to 1080p"
   },
   "Queue": {
     "playlist": "Playlist",
@@ -96,7 +101,8 @@
     "skipped": "Already had it",
     "error": "Failed",
     "cancelled": "Cancelled",
-    "paused": "Paused"
+    "paused": "Paused",
+    "converting": "Converting for TV"
   },
   "Job": {
     "downloading": "Downloading — {done} of {total}",

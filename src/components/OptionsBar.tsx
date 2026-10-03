@@ -10,10 +10,15 @@ import type { DownloadOptions, FolderChoice, QualityChoice } from "@/lib/types";
 
 type T = ReturnType<typeof useTranslations<"Options">>;
 
-const qualityOptions = (t: T): SelectOption[] => [
-  { value: "best", label: t("qualityBest"), hint: t("hintAuto") },
-  { value: "2160", label: "2160p", badge: "4K" },
-  { value: "1440", label: "1440p", badge: "2K" },
+// TV mode tops out at 1080p: that's as high as YouTube serves H.264.
+const qualityOptions = (t: T, tv: boolean): SelectOption[] => [
+  { value: "best", label: t("qualityBest"), hint: tv ? t("hintUpTo1080") : t("hintAuto") },
+  ...(tv
+    ? []
+    : [
+        { value: "2160", label: "2160p", badge: "4K" },
+        { value: "1440", label: "1440p", badge: "2K" },
+      ]),
   { value: "1080", label: "1080p", badge: "FHD" },
   { value: "720", label: "720p", badge: "HD" },
   { value: "480", label: "480p", hint: t("hintSmaller") },
@@ -47,6 +52,7 @@ export function OptionsBar({
   playlistFolder: string;
 }) {
   const t = useTranslations("Options");
+  const tv = options.tvCompatible !== false;
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [browsers, setBrowsers] = useState<string[]>([]);
   const [cookiesFileName, setCookiesFileName] = useState<string | null>(null);
@@ -127,12 +133,28 @@ export function OptionsBar({
         </div>
 
         {options.kind === "video" ? (
-          <LabeledSelect
-            label={t("quality")}
-            value={options.quality}
-            onChange={(v) => onChange({ quality: v as QualityChoice })}
-            options={qualityOptions(t)}
-          />
+          <>
+            <LabeledSelect
+              label={t("quality")}
+              value={tv && Number(options.quality) > 1080 ? "1080" : options.quality}
+              onChange={(v) => onChange({ quality: v as QualityChoice })}
+              options={qualityOptions(t, tv)}
+            />
+            <div className="flex rounded-lg border border-border bg-bg p-1">
+              <SegButton
+                active={tv}
+                title={t("tvModeHint")}
+                onClick={() =>
+                  onChange({ tvCompatible: true, quality: Number(options.quality) > 1080 ? "1080" : options.quality })
+                }
+              >
+                {t("tvMode")}
+              </SegButton>
+              <SegButton active={!tv} title={t("originalModeHint")} onClick={() => onChange({ tvCompatible: false })}>
+                {t("originalMode")}
+              </SegButton>
+            </div>
+          </>
         ) : (
           <LabeledSelect
             label={t("format")}
@@ -349,15 +371,18 @@ function FolderIcon() {
 function SegButton({
   active,
   onClick,
+  title,
   children,
 }: {
   active: boolean;
   onClick: () => void;
+  title?: string;
   children: React.ReactNode;
 }) {
   return (
     <button
       onClick={onClick}
+      title={title}
       className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
         active ? "bg-panel-raised text-text" : "text-text-muted hover:text-text"
       }`}

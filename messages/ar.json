@@ -72,7 +72,12 @@
     "useCookies": "استخدام كوكيز {browser}",
     "uploadCookies": "رفع ملف cookies.txt",
     "uploading": "جارٍ الرفع…",
-    "playlistFolder": "ستُحفظ ملفات القائمة في مجلد فرعي باسم ”{folder}“."
+    "playlistFolder": "ستُحفظ ملفات القائمة في مجلد فرعي باسم ”{folder}“.",
+    "tvMode": "للتلفاز",
+    "originalMode": "الأصلي",
+    "tvModeHint": "ملف MP4 بترميز H.264 وصوت AAC يعمل على أي تلفاز من وحدة USB، حتى دقة 1080p. يُحوَّل الملف بعد التنزيل عند الحاجة.",
+    "originalModeHint": "ترميزات يوتيوب الأصلية (غالبًا AV1/VP9 مع Opus)، حتى دقة 4K. تعمل على الحاسوب والهاتف، ولا تعمل على كثير من أجهزة التلفاز.",
+    "hintUpTo1080": "حتى 1080p"
   },
   "Queue": {
     "playlist": "قائمة تشغيل",
@@ -96,7 +101,8 @@
     "skipped": "موجود مسبقًا",
     "error": "فشل",
     "cancelled": "أُلغي",
-    "paused": "متوقف مؤقتًا"
+    "paused": "متوقف مؤقتًا",
+    "converting": "تحويل للتلفاز"
   },
   "Job": {
     "downloading": "جارٍ التنزيل — {done} من {total}",
