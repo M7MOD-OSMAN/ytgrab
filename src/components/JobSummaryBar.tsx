@@ -4,12 +4,14 @@ import { useTranslations } from "next-intl";
 import { isYoutubeRefusal, type JobSnapshot } from "@/lib/types";
 import { Spinner } from "./UrlBar";
 import { PathText } from "./ui/PathText";
+import { useFormatEta } from "./ui/Eta";
 
 const BUTTON =
   "flex items-center gap-1.5 rounded-lg border border-border bg-panel-raised px-3 py-1.5 text-xs font-medium text-text hover:bg-border transition-colors";
 
 export function JobSummaryBar({
   job,
+  timeLeft,
   onCancel,
   onPause,
   onResume,
@@ -17,6 +19,8 @@ export function JobSummaryBar({
   onCleanup,
 }: {
   job: JobSnapshot;
+  /** Seconds left for the whole job; null while still estimating, undefined to not show it. */
+  timeLeft?: number | null;
   onCancel: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -24,6 +28,7 @@ export function JobSummaryBar({
   onCleanup: () => void;
 }) {
   const t = useTranslations("Job");
+  const formatEta = useFormatEta();
   const pct = job.totalItems > 0 ? Math.round((job.completedItems / job.totalItems) * 100) : 0;
   const failedCount = job.items.filter((i) => i.status === "error").length;
   const running = job.status === "running" || job.status === "queued";
@@ -46,6 +51,18 @@ export function JobSummaryBar({
         <div className="flex items-center gap-2.5">
           <span className={`h-2 w-2 shrink-0 rounded-full ${statusDotColor(job.status)}`} />
           <span className="text-sm font-medium text-text">{label}</span>
+          {running && timeLeft !== undefined && (
+            <span className="flex items-center gap-1 rounded-md border border-border bg-panel-raised px-2 py-0.5 text-xs text-text-muted">
+              <ClockIcon />
+              {timeLeft === null ? (
+                <span className="text-text-faint">{t("estimating")}</span>
+              ) : timeLeft < 60 ? (
+                t("lessThanMinuteLeft")
+              ) : (
+                t("timeLeft", { time: formatEta(timeLeft) })
+              )}
+            </span>
+          )}
           {failedCount > 0 && <span className="text-xs text-error">{t("failedCount", { count: failedCount })}</span>}
         </div>
 
@@ -154,6 +171,15 @@ function barColor(status: JobSnapshot["status"]): string {
     default:
       return "bg-text-faint";
   }
+}
+
+function ClockIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="shrink-0">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+      <path d="M12 7v5l3 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 function PauseIcon() {

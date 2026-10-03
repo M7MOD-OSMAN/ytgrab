@@ -44,7 +44,15 @@ type Job = {
   ytdlpExit: number | null | undefined;
   // TV checks run beside yt-dlp: probes in flight, then one conversion at a time.
   tv: { checking: Set<string>; queue: TvTask[]; active: (TvTask & { handle: ConversionHandle }) | null };
+  // Throughput: bytes fetched per item stream (video, then audio), and timed samples of the job total.
+  streams: Map<string, { base: number; current: number }>;
+  bytesTotal: number;
+  byteSamples: { t: number; total: number }[];
 };
+
+// Long enough to include the gaps between videos, short enough to recover from a slow start.
+const RATE_WINDOW_MS = 60_000;
+const RATE_MIN_MS = 15_000;
 
 // Pause before each automatic retry after YouTube refuses a download.
 const RETRY_DELAYS_MS = [3000, 10000];
@@ -73,6 +81,7 @@ function getOrCreateItem(job: Job, id: string, title?: string): JobItemProgress 
       speed: null,
       eta: null,
       totalBytes: null,
+      downloadedBytes: 0,
       error: null,
     };
     job.items.set(id, item);
@@ -81,6 +90,38 @@ function getOrCreateItem(job: Job, id: string, title?: string): JobItemProgress 
     item.title = title;
   }
   return item;
+}
+
+// yt-dlp restarts downloaded_bytes at 0 for each stream, so sum per stream; a resumed .part
+// continues from its own count, so only the increase is new.
+function countBytes(job: Job, id: string, item: JobItemProgress, downloaded: number, finished: boolean) {
+  const s = job.streams.get(id) ?? { base: 0, current: 0 };
+  if (downloaded < s.current) {
+    s.base += s.current;
+    s.current = 0;
+  }
+  job.bytesTotal += downloaded - s.current;
+  s.current = downloaded;
+  if (finished) {
+    s.base += s.current;
+    s.current = 0;
+  }
+  job.streams.set(id, s);
+  item.downloadedBytes = s.base + s.current;
+
+  const now = Date.now();
+  const last = job.byteSamples[job.byteSamples.length - 1];
+  if (!last || now - last.t >= 1000) job.byteSamples.push({ t: now, total: job.bytesTotal });
+  while (job.byteSamples.length > 1 && now - job.byteSamples[0].t > RATE_WINDOW_MS) job.byteSamples.shift();
+}
+
+function measuredRate(job: Job): number | null {
+  const first = job.byteSamples[0];
+  if (job.status !== "running" || !first) return null;
+  const ms = Date.now() - first.t;
+  if (ms < RATE_MIN_MS) return null;
+  const rate = ((job.bytesTotal - first.total) * 1000) / ms;
+  return rate > 0 ? rate : null;
 }
 
 // With a planned list, only its ids are videos: "[youtube:tab] <playlist id>: ..." shares
@@ -148,6 +189,7 @@ export function handleLine(job: Job, raw: string, isStderr: boolean) {
         percent: string;
         speed: string;
         eta: string;
+        downloaded?: number | null;
       };
       const id = p.id && p.id !== "NA" ? p.id : job.currentId;
       if (id) {
@@ -160,6 +202,7 @@ export function handleLine(job: Job, raw: string, isStderr: boolean) {
         item.speed = p.speed && p.speed !== "Unknown B/s" ? p.speed.trim() : item.speed;
         item.eta = p.eta && p.eta !== "Unknown" ? p.eta.trim() : item.eta;
         if (p.status === "finished") item.percent = 100;
+        if (typeof p.downloaded === "number") countBytes(job, id, item, p.downloaded, p.status === "finished");
       }
     } catch {
       // malformed progress line — ignore, non-fatal
@@ -434,6 +477,9 @@ export function createJob(options: DownloadOptions, expectedIds: { id: string; t
     retryTimer: null,
     ytdlpExit: undefined,
     tv: { checking: new Set(), queue: [], active: null },
+    streams: new Map(),
+    bytesTotal: 0,
+    byteSamples: [],
   };
   job.emitter.setMaxListeners(50);
   jobs.set(id, job);
@@ -638,6 +684,7 @@ export function resumeJob(id: string): boolean {
   const job = jobs.get(id);
   if (!job || job.status !== "paused") return false;
   job.retryAttempt = 0; // a manual resume starts with a fresh retry budget
+  job.byteSamples = []; // time spent paused isn't download time
   for (const task of job.tv.queue) {
     const item = job.items.get(task.id);
     if (item) item.status = "converting";
@@ -677,6 +724,7 @@ export function snapshot(job: Job): JobSnapshot {
     errorMessage: job.errorMessage,
     retryAttempt: job.retryAttempt,
     maxRetries: RETRY_DELAYS_MS.length,
+    bytesPerSecond: measuredRate(job),
   };
 }
 

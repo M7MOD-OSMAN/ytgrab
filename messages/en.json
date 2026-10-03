@@ -92,7 +92,9 @@
     "playlistOnlyNote": "This link also points at a playlist — only this single video will be downloaded.",
     "willSkip": "{reason} — will be skipped",
     "sizing": "calculating sizes…",
-    "total": "Total"
+    "total": "Total",
+    "itemTimeLeft": "{time} left",
+    "itemTime": "{time} to download"
   },
   "Status": {
     "pending": "Queued",
@@ -119,7 +121,10 @@
     "resume": "Resume",
     "pausedNote": "Progress is kept. Resume whenever you like.",
     "retrying": "YouTube refused the download — trying again ({attempt} of {max})…",
-    "refusedHint": "YouTube kept refusing these even after retrying. It usually passes — wait a few minutes, then try again."
+    "refusedHint": "YouTube kept refusing these even after retrying. It usually passes — wait a few minutes, then try again.",
+    "timeLeft": "about {time} left",
+    "estimating": "estimating time left…",
+    "lessThanMinuteLeft": "less than a minute left"
   },
   "History": {
     "title": "Download history",
@@ -160,5 +165,11 @@
     "winTerminal": "PowerShell or Windows Terminal",
     "macTerminal": "Terminal (with Homebrew)",
     "and": " and "
+  },
+  "Eta": {
+    "lessThanMinute": "less than a minute",
+    "minutes": "{m} min",
+    "hours": "{h} h",
+    "hoursMinutes": "{h} h {m} min"
   }
 }

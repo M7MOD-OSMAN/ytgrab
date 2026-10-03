@@ -4,15 +4,8 @@ import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import type { EntrySize, JobItemProgress, MediaKind, MediaInfo, QualityChoice } from "@/lib/types";
 import { formatBytes, formatDuration } from "@/lib/format";
-
-// The download merges a video stream with an audio one, so the figure that
-// matters depends on both the media kind and the chosen quality.
-function sizeFor(entry: EntrySize | undefined, kind: MediaKind, quality: QualityChoice, tv: boolean): number | null {
-  if (!entry) return null;
-  if (kind === "audio") return entry.audio;
-  // Sizes saved before TV mode existed have no tv figures; the original estimate is close enough.
-  return (tv ? entry.tv?.[quality] ?? entry.video[quality] : entry.video[quality]) ?? null;
-}
+import { sizeFor } from "@/lib/eta";
+import { useFormatEta } from "./ui/Eta";
 
 function Tag({ children, strong = false }: { children: ReactNode; strong?: boolean }) {
   return (
@@ -48,11 +41,13 @@ function MetaLine({
   duration,
   bytes,
   pending,
+  eta,
 }: {
   lead?: ReactNode;
   duration: string;
   bytes: number | null;
   pending: boolean;
+  eta?: string | null;
 }) {
   return (
     <div className="mt-1.5 flex min-w-0 items-center gap-1.5 text-xs">
@@ -63,8 +58,34 @@ function MetaLine({
       ) : pending ? (
         <span aria-hidden="true" className="inline-block h-4.5 w-14 animate-pulse rounded border border-border bg-panel-raised" />
       ) : null}
+      {eta && (
+        <span className="ms-1 flex min-w-0 items-center gap-1 text-text-faint">
+          <ClockIcon />
+          <span className="truncate">{eta}</span>
+        </span>
+      )}
     </div>
   );
+}
+
+function ClockIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true" className="shrink-0">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+      <path d="M12 7v5l3 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// "3 min left" for the video downloading now, "4 min to download" for one still waiting its turn.
+function useRowEta(etaByIndex: Map<number, number> | null) {
+  const t = useTranslations("Queue");
+  const format = useFormatEta();
+  return (index: number, item: JobItemProgress | null) => {
+    const seconds = etaByIndex?.get(index);
+    if (seconds == null || !item) return null;
+    return item.status === "downloading" ? t("itemTimeLeft", { time: format(seconds) }) : t("itemTime", { time: format(seconds) });
+  };
 }
 
 function Thumb({ src }: { src: string | null }) {
@@ -170,6 +191,7 @@ export function QueueList({
   quality,
   kind,
   tvCompatible,
+  etaByIndex,
 }: {
   info: MediaInfo;
   selected: Set<number>;
@@ -185,8 +207,11 @@ export function QueueList({
   quality: QualityChoice;
   kind: MediaKind;
   tvCompatible: boolean;
+  /** Seconds left per playlist index while a job runs. */
+  etaByIndex: Map<number, number> | null;
 }) {
   const t = useTranslations("Queue");
+  const rowEta = useRowEta(etaByIndex);
   const entries = info.entries ?? [];
   const unavailableCount = entries.filter((e) => !e.isAvailable).length;
 
@@ -211,6 +236,7 @@ export function QueueList({
               duration={info.isLive ? t("live") : formatDuration(info.durationSeconds)}
               bytes={info.isLive ? null : sizeFor(sizes.get(1), kind, quality, tvCompatible)}
               pending={sizing && !info.isLive}
+              eta={info.isLive ? null : rowEta(1, progress)}
             />
             {info.isLive && <div className="mt-2 text-xs text-warning">{t("liveNote")}</div>}
             {info.partOfPlaylistOnly && <div className="mt-2 text-xs text-text-faint">{t("playlistOnlyNote")}</div>}
@@ -286,6 +312,7 @@ export function QueueList({
                     duration={formatDuration(e.durationSeconds)}
                     bytes={sizeFor(sizes.get(e.index), kind, quality, tvCompatible)}
                     pending={sizing}
+                    eta={rowEta(e.index, progress)}
                   />
                 )}
                 {progress && <ItemProgressBar item={progress} />}

@@ -8,6 +8,7 @@ import { QueueList } from "./QueueList";
 import { JobSummaryBar } from "./JobSummaryBar";
 import { fetchInfo, streamSizes } from "@/lib/api";
 import { playlistFolderFor } from "@/lib/format";
+import { estimateJob } from "@/lib/eta";
 import { loadSession, saveSession } from "@/lib/session";
 import type { DownloadOptions, EntrySize, FolderChoice, JobSnapshot, MediaInfo } from "@/lib/types";
 
@@ -128,6 +129,7 @@ export function DownloaderView({
   // After a reload the job id is back before the job list is. Hold the progress
   // view until it arrives rather than flashing checkboxes and download buttons.
   const awaitingJob = !!currentJobId && !currentJob && !jobsLoaded;
+  const eta = currentJob ? estimateJob(currentJob, sizes) : null;
   const itemsByIndex = useMemo(() => {
     if (!currentJob) return awaitingJob ? new Map<number, JobSnapshot["items"][number]>() : null;
     const map = new Map<number, JobSnapshot["items"][number]>();
@@ -253,6 +255,7 @@ export function DownloaderView({
             quality={options.quality}
             kind={options.kind}
             tvCompatible={options.tvCompatible !== false}
+            etaByIndex={eta?.byIndex ?? null}
           />
 
           {!currentJob && !awaitingJob && (
@@ -289,6 +292,7 @@ export function DownloaderView({
           {currentJob && (
             <JobSummaryBar
               job={currentJob}
+              timeLeft={eta?.totalSeconds ?? null}
               onCancel={() => onCancelJob(currentJob.id)}
               onPause={() => onPauseJob(currentJob.id)}
               onResume={() => onResumeJob(currentJob.id)}

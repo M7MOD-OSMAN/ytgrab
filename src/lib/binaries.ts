@@ -56,7 +56,7 @@ function resolveAbsolutePath(command: string): string | null {
 
 function tryRun(binPath: string, versionFlag: string): string | null {
   try {
-    const res = spawnSync(binPath, [versionFlag], { encoding: "utf8", timeout: 5000 });
+    const res = spawnSync(binPath, [versionFlag], { encoding: "utf8", timeout: 15000 });
     if (res.status === 0) {
       return (res.stdout || res.stderr || "").trim().split("\n")[0];
     }
@@ -106,11 +106,24 @@ function locate(name: "yt-dlp" | "ffmpeg", versionFlag: string): BinaryInfo {
 let cached: SetupStatus | null = null;
 let cachedAt = 0;
 
+// A missing binary is re-checked often so a fresh install shows up; a found one rarely,
+// since each check blocks the server while it runs.
+const FOUND_TTL_MS = 60_000;
+const MISSING_TTL_MS = 5000;
+
+// A busy machine (say, mid TV conversion) can time out the version check; a binary
+// that's still on disk hasn't gone anywhere.
+function keepIfStillThere(fresh: BinaryInfo, prev: BinaryInfo | undefined): BinaryInfo {
+  if (!fresh.found && prev?.found && prev.binPath && existsSync(prev.binPath)) return prev;
+  return fresh;
+}
+
 export function getSetupStatus(forceRefresh = false): SetupStatus {
   const now = Date.now();
-  if (!forceRefresh && cached && now - cachedAt < 5000) return cached;
-  const ytDlp = locate("yt-dlp", "--version");
-  const ffmpeg = locate("ffmpeg", "-version");
+  const ttl = cached?.ready ? FOUND_TTL_MS : MISSING_TTL_MS;
+  if (!forceRefresh && cached && now - cachedAt < ttl) return cached;
+  const ytDlp = keepIfStillThere(locate("yt-dlp", "--version"), cached?.ytDlp);
+  const ffmpeg = keepIfStillThere(locate("ffmpeg", "-version"), cached?.ffmpeg);
   const status: SetupStatus = {
     platform: process.platform,
     ytDlp,

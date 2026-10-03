@@ -226,7 +226,7 @@ function progressTemplate(): string {
     "download:" +
     PROGRESS_MARKER +
     ' {"id": %(info.id)j, "status": %(progress.status)j, "percent": %(progress._percent_str)j, ' +
-    '"speed": %(progress._speed_str)j, "eta": %(progress._eta_str)j}'
+    '"speed": %(progress._speed_str)j, "eta": %(progress._eta_str)j, "downloaded": %(progress.downloaded_bytes)j}'
   );
 }
 

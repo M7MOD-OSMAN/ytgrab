@@ -72,6 +72,8 @@ export type JobItemProgress = {
   speed: string | null;
   eta: string | null;
   totalBytes: string | null;
+  // Bytes fetched for this item so far, across its video and audio streams.
+  downloadedBytes: number;
   error: string | null;
 };
 
@@ -107,6 +109,8 @@ export type JobSnapshot = {
   // Automatic retries used after YouTube refused a download, out of maxRetries.
   retryAttempt: number;
   maxRetries: number;
+  // Measured over the last couple of minutes, gaps between videos included; null until there's enough to go on.
+  bytesPerSecond: number | null;
 };
 
 // A destination offered in the "Save to" dropdown.
